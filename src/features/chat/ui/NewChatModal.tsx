@@ -14,7 +14,7 @@ export default function NewChatModal({ onClose, onCreate }: Props) {
   const isGroup = selected.length > 1;
 
   useEffect(() => {
-    getChatUsers().then((u) => { setUsers(u); setLoading(false); });
+    getChatUsers().then(({ users }) => { setUsers(users); setLoading(false); });
   }, []);
 
   const toggle = (id: number) =>
