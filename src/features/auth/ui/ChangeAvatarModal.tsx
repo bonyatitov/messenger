@@ -31,7 +31,8 @@ export default function ChangeAvatarModal({ onClose }: Props) {
       return;
     }
     setError("");
-    setImageType(file.type);
+    const detectedType = file.type || (file.name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
+    setImageType(detectedType);
     const reader = new FileReader();
     reader.onload = (ev) => {
       const result = ev.target?.result as string;
@@ -153,7 +154,7 @@ export default function ChangeAvatarModal({ onClose }: Props) {
                 </button>
               )}
               <p className="text-xs text-muted-foreground">JPG, PNG до 5 МБ</p>
-              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} className="hidden" />
+              <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
             </div>
           )}
         </div>
