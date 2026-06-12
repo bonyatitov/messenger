@@ -26,18 +26,34 @@ export default function ChangeAvatarModal({ onClose }: Props) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Файл слишком большой. Максимум 5 МБ");
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Файл слишком большой. Максимум 10 МБ");
       return;
     }
     setError("");
-    const detectedType = file.type || (file.name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
-    setImageType(detectedType);
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const result = ev.target?.result as string;
-      setPreviewUrl(result);
-      setImageBase64(result.split(",")[1]);
+      const original = ev.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 800;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL("image/jpeg", 0.75);
+        setPreviewUrl(compressed);
+        setImageBase64(compressed.split(",")[1]);
+        setImageType("image/jpeg");
+      };
+      img.onerror = () => {
+        setPreviewUrl(original);
+        setImageBase64(original.split(",")[1]);
+        setImageType("image/jpeg");
+      };
+      img.src = original;
     };
     reader.readAsDataURL(file);
   };
