@@ -8,6 +8,8 @@ self.addEventListener('push', function(event) {
     badge: '/icon-192.png',
     data: { chatId: data.chatId },
     vibrate: [200, 100, 200],
+    tag: 'chat-' + (data.chatId || 'general'),
+    renotify: true,
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
