@@ -1,20 +1,28 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Icon from "@/shared/ui/icon";
 import { useAuth } from "@/shared/lib/AuthContext";
 import AdminPanel from "@/features/auth/ui/AdminPanel";
 import ChangePasswordModal from "@/features/auth/ui/ChangePasswordModal";
 import ChangeAvatarModal from "@/features/auth/ui/ChangeAvatarModal";
+import { subscribeToPush } from "@/shared/lib/push";
 
 const settings = [
-  { icon: "Bell", label: "Уведомления", desc: "Настройка оповещений", color: "hsl(340,55%,88%)" },
   { icon: "Palette", label: "Внешний вид", desc: "Тема и оформление", color: "hsl(270,40%,88%)" },
   { icon: "HelpCircle", label: "Помощь", desc: "FAQ и поддержка", color: "hsl(140,35%,87%)" },
 ];
 
+function getNotifStatus(): "granted" | "denied" | "default" | "unsupported" {
+  if (!("Notification" in window)) return "unsupported";
+  return Notification.permission;
+}
+
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
-  const [notificationsOn, setNotificationsOn] = useState(true);
+  const [notifStatus, setNotifStatus] = useState<"granted" | "denied" | "default" | "unsupported">("default");
+  const [notifLoading, setNotifLoading] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+
+  useEffect(() => { setNotifStatus(getNotifStatus()); }, []);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeAvatar, setShowChangeAvatar] = useState(false);
 
@@ -79,22 +87,47 @@ export default function ProfileScreen() {
             style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}
           >
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "hsl(340,55%,88%)" }}>
-              <Icon name="Bell" size={18} style={{ color: "hsl(340,55%,50%)" }} />
+              <Icon name={notifStatus === "granted" ? "Bell" : "BellOff"} size={18} style={{ color: "hsl(340,55%,50%)" }} />
             </div>
             <div className="flex-1">
               <p className="text-sm text-foreground" style={{ fontWeight: 600 }}>Уведомления</p>
-              <p className="text-xs text-muted-foreground">Настройка оповещений</p>
+              <p className="text-xs text-muted-foreground">
+                {notifStatus === "granted" && "Включены"}
+                {notifStatus === "denied" && "Заблокированы в браузере"}
+                {notifStatus === "default" && "Нажмите, чтобы включить"}
+                {notifStatus === "unsupported" && "Не поддерживается"}
+              </p>
             </div>
-            <button
-              onClick={() => setNotificationsOn(!notificationsOn)}
-              className="w-12 h-7 rounded-full transition-all duration-300 relative flex-shrink-0"
-              style={{ background: notificationsOn ? "hsl(22,85%,62%)" : "hsl(35,25%,82%)" }}
-            >
-              <div
-                className="absolute top-1 w-5 h-5 rounded-full bg-white transition-all duration-300"
-                style={{ left: notificationsOn ? "calc(100% - 24px)" : "4px", boxShadow: "0 1px 4px rgba(0,0,0,0.2)" }}
-              />
-            </button>
+            {notifStatus === "denied" ? (
+              <Icon name="Lock" size={16} style={{ color: "hsl(0,55%,65%)" }} />
+            ) : notifStatus === "unsupported" ? (
+              <Icon name="X" size={16} style={{ color: "hsl(25,15%,65%)" }} />
+            ) : (
+              <button
+                onClick={async () => {
+                  if (notifStatus === "granted") return;
+                  setNotifLoading(true);
+                  const ok = await subscribeToPush();
+                  setNotifStatus(getNotifStatus());
+                  setNotifLoading(false);
+                  if (!ok && Notification.permission === "denied") setNotifStatus("denied");
+                }}
+                disabled={notifLoading || notifStatus === "granted"}
+                className="w-12 h-7 rounded-full transition-all duration-300 relative flex-shrink-0"
+                style={{ background: notifStatus === "granted" ? "hsl(22,85%,62%)" : "hsl(35,25%,82%)" }}
+              >
+                {notifLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Icon name="Loader2" size={14} className="animate-spin" style={{ color: "white" }} />
+                  </div>
+                ) : (
+                  <div
+                    className="absolute top-1 w-5 h-5 rounded-full bg-white transition-all duration-300"
+                    style={{ left: notifStatus === "granted" ? "calc(100% - 24px)" : "4px", boxShadow: "0 1px 4px rgba(0,0,0,0.2)" }}
+                  />
+                )}
+              </button>
+            )}
           </div>
 
           <button
