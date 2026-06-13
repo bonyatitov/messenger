@@ -4,6 +4,22 @@ import Avatar from "@/shared/ui/Avatar";
 import { Chat, Message, getMessages, sendMessage, sendPhoto } from "@/shared/api";
 import ChatMessageBubble from "@/features/chat/ui/ChatMessageBubble";
 
+function formatDateSep(dateStr: string): string {
+  if (!dateStr) return "";
+  const todayMsk = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Moscow" }));
+  const todayStr = `${todayMsk.getFullYear()}-${String(todayMsk.getMonth() + 1).padStart(2, "0")}-${String(todayMsk.getDate()).padStart(2, "0")}`;
+  const yesterdayMsk = new Date(todayMsk);
+  yesterdayMsk.setDate(yesterdayMsk.getDate() - 1);
+  const yesterdayStr = `${yesterdayMsk.getFullYear()}-${String(yesterdayMsk.getMonth() + 1).padStart(2, "0")}-${String(yesterdayMsk.getDate()).padStart(2, "0")}`;
+  if (dateStr === todayStr) return "Сегодня";
+  if (dateStr === yesterdayStr) return "Вчера";
+  const [y, m, d] = dateStr.split("-");
+  const months = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"];
+  const mIdx = parseInt(m, 10) - 1;
+  const yearSuffix = y !== String(todayMsk.getFullYear()) ? ` ${y}` : "";
+  return `${parseInt(d, 10)} ${months[mIdx]}${yearSuffix}`;
+}
+
 type Props = { chat: Chat; onBack: () => void };
 
 export default function ChatView({ chat, onBack }: Props) {
@@ -132,21 +148,26 @@ export default function ChatView({ chat, onBack }: Props) {
             <p className="text-sm text-muted-foreground">Начните переписку!</p>
           </div>
         ) : (
-          <>
-            <div className="flex justify-center mb-4">
-              <span className="text-xs text-muted-foreground bg-white px-3 py-1 rounded-full shadow-sm">Сегодня</span>
-            </div>
-            <div className="space-y-1">
-              {messages.map((msg, i) => {
-                const prev = messages[i - 1];
-                const showAvatar = !msg.isMe && (!prev || prev.userId !== msg.userId);
-                const showName = chat.isGroup && showAvatar;
-                return (
-                  <ChatMessageBubble key={msg.id} msg={msg} showAvatar={showAvatar} showName={showName} onImageClick={setLightboxUrl} />
-                );
-              })}
-            </div>
-          </>
+          <div className="space-y-1">
+            {messages.map((msg, i) => {
+              const prev = messages[i - 1];
+              const showDateSep = !prev || prev.date !== msg.date;
+              const showAvatar = !msg.isMe && (!prev || prev.userId !== msg.userId || prev.date !== msg.date);
+              const showName = chat.isGroup && showAvatar;
+              return (
+                <div key={msg.id}>
+                  {showDateSep && (
+                    <div className="flex justify-center my-3">
+                      <span className="text-xs text-muted-foreground bg-white px-3 py-1 rounded-full shadow-sm">
+                        {formatDateSep(msg.date)}
+                      </span>
+                    </div>
+                  )}
+                  <ChatMessageBubble msg={msg} showAvatar={showAvatar} showName={showName} onImageClick={setLightboxUrl} />
+                </div>
+              );
+            })}
+          </div>
         )}
         <div ref={bottomRef} />
       </div>

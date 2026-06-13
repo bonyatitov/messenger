@@ -18,6 +18,7 @@ export type Message = {
   text: string;
   imageUrl?: string | null;
   time: string;
+  date: string;
   userId: number;
   displayName: string;
   avatar: string;

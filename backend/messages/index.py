@@ -5,7 +5,14 @@ import base64
 import secrets
 import boto3
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+MSK = timezone(timedelta(hours=3))
+
+def to_msk(dt):
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc).astimezone(MSK)
 
 SCHEMA = "t_p3482084_react_native_family_"
 
@@ -200,7 +207,8 @@ def handler(event: dict, context) -> dict:
             "id": r[0],
             "text": r[1],
             "imageUrl": r[2],
-            "time": r[3].strftime("%H:%M") if r[3] else "",
+            "time": to_msk(r[3]).strftime("%H:%M") if r[3] else "",
+            "date": to_msk(r[3]).strftime("%Y-%m-%d") if r[3] else "",
             "userId": r[4],
             "displayName": r[5],
             "avatar": r[6] or "👤",
@@ -228,6 +236,7 @@ def handler(event: dict, context) -> dict:
         msg_id, created_at = cur.fetchone()
         conn.commit()
         conn.close()
+        msk_dt = to_msk(created_at)
         return {
             "statusCode": 200,
             "headers": cors(),
@@ -236,7 +245,8 @@ def handler(event: dict, context) -> dict:
                     "id": msg_id,
                     "text": text,
                     "imageUrl": None,
-                    "time": created_at.strftime("%H:%M"),
+                    "time": msk_dt.strftime("%H:%M"),
+                    "date": msk_dt.strftime("%Y-%m-%d"),
                     "userId": caller_id,
                     "displayName": caller[2],
                     "avatar": caller[4] or "👤",
@@ -282,6 +292,7 @@ def handler(event: dict, context) -> dict:
         msg_id, created_at = cur.fetchone()
         conn.commit()
         conn.close()
+        msk_dt = to_msk(created_at)
         return {
             "statusCode": 200,
             "headers": cors(),
@@ -290,7 +301,8 @@ def handler(event: dict, context) -> dict:
                     "id": msg_id,
                     "text": text,
                     "imageUrl": image_url,
-                    "time": created_at.strftime("%H:%M"),
+                    "time": msk_dt.strftime("%H:%M"),
+                    "date": msk_dt.strftime("%Y-%m-%d"),
                     "userId": caller_id,
                     "displayName": caller[2],
                     "avatar": caller[4] or "👤",
