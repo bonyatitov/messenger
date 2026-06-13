@@ -185,17 +185,23 @@ def handler(event: dict, context) -> dict:
         since = body.get("since") or (event.get("queryStringParameters") or {}).get("since")
         if since:
             cur.execute(f"""
-                SELECT m.id, m.text, m.image_url, m.created_at, u.id, u.display_name, u.avatar
+                SELECT m.id, m.text, m.image_url, m.created_at, u.id, u.display_name, u.avatar,
+                       m.reply_to_id, ru.display_name, rm.text, rm.image_url
                 FROM {SCHEMA}.messages m
                 JOIN {SCHEMA}.users u ON u.id = m.user_id
+                LEFT JOIN {SCHEMA}.messages rm ON rm.id = m.reply_to_id
+                LEFT JOIN {SCHEMA}.users ru ON ru.id = rm.user_id
                 WHERE m.chat_id = %s AND m.id > %s
                 ORDER BY m.created_at ASC
             """, (chat_id, int(since)))
         else:
             cur.execute(f"""
-                SELECT m.id, m.text, m.image_url, m.created_at, u.id, u.display_name, u.avatar
+                SELECT m.id, m.text, m.image_url, m.created_at, u.id, u.display_name, u.avatar,
+                       m.reply_to_id, ru.display_name, rm.text, rm.image_url
                 FROM {SCHEMA}.messages m
                 JOIN {SCHEMA}.users u ON u.id = m.user_id
+                LEFT JOIN {SCHEMA}.messages rm ON rm.id = m.reply_to_id
+                LEFT JOIN {SCHEMA}.users ru ON ru.id = rm.user_id
                 WHERE m.chat_id = %s
                 ORDER BY m.created_at ASC
                 LIMIT 100
@@ -213,6 +219,7 @@ def handler(event: dict, context) -> dict:
             "displayName": r[5],
             "avatar": r[6] or "👤",
             "isMe": r[4] == caller_id,
+            "replyTo": {"id": r[7], "authorName": r[8] or "?", "text": r[9] or "", "imageUrl": r[10]} if r[7] else None,
         } for r in rows]
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"messages": messages})}
 
@@ -229,11 +236,26 @@ def handler(event: dict, context) -> dict:
             conn.close()
             return {"statusCode": 403, "headers": cors(), "body": json.dumps({"error": "Нет доступа к чату"})}
 
+        reply_to_id = body.get("replyToId") or None
+        if reply_to_id:
+            reply_to_id = int(reply_to_id)
+
         cur.execute(
-            f"INSERT INTO {SCHEMA}.messages (chat_id, user_id, text) VALUES (%s, %s, %s) RETURNING id, created_at",
-            (chat_id, caller_id, text)
+            f"INSERT INTO {SCHEMA}.messages (chat_id, user_id, text, reply_to_id) VALUES (%s, %s, %s, %s) RETURNING id, created_at",
+            (chat_id, caller_id, text, reply_to_id)
         )
         msg_id, created_at = cur.fetchone()
+
+        reply_to_data = None
+        if reply_to_id:
+            cur.execute(f"""
+                SELECT rm.text, rm.image_url, u.display_name FROM {SCHEMA}.messages rm
+                JOIN {SCHEMA}.users u ON u.id = rm.user_id WHERE rm.id = %s
+            """, (reply_to_id,))
+            rr = cur.fetchone()
+            if rr:
+                reply_to_data = {"id": reply_to_id, "authorName": rr[2], "text": rr[0] or "", "imageUrl": rr[1]}
+
         conn.commit()
         conn.close()
         msk_dt = to_msk(created_at)
@@ -251,6 +273,7 @@ def handler(event: dict, context) -> dict:
                     "displayName": caller[2],
                     "avatar": caller[4] or "👤",
                     "isMe": True,
+                    "replyTo": reply_to_data,
                 }
             })
         }
@@ -285,11 +308,26 @@ def handler(event: dict, context) -> dict:
         image_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
 
         text = caption or "📷 Фото"
+        reply_to_id = body.get("replyToId") or None
+        if reply_to_id:
+            reply_to_id = int(reply_to_id)
+
         cur.execute(
-            f"INSERT INTO {SCHEMA}.messages (chat_id, user_id, text, image_url) VALUES (%s, %s, %s, %s) RETURNING id, created_at",
-            (chat_id, caller_id, text, image_url)
+            f"INSERT INTO {SCHEMA}.messages (chat_id, user_id, text, image_url, reply_to_id) VALUES (%s, %s, %s, %s, %s) RETURNING id, created_at",
+            (chat_id, caller_id, text, image_url, reply_to_id)
         )
         msg_id, created_at = cur.fetchone()
+
+        reply_to_data = None
+        if reply_to_id:
+            cur.execute(f"""
+                SELECT rm.text, rm.image_url, u.display_name FROM {SCHEMA}.messages rm
+                JOIN {SCHEMA}.users u ON u.id = rm.user_id WHERE rm.id = %s
+            """, (reply_to_id,))
+            rr = cur.fetchone()
+            if rr:
+                reply_to_data = {"id": reply_to_id, "authorName": rr[2], "text": rr[0] or "", "imageUrl": rr[1]}
+
         conn.commit()
         conn.close()
         msk_dt = to_msk(created_at)
@@ -307,6 +345,7 @@ def handler(event: dict, context) -> dict:
                     "displayName": caller[2],
                     "avatar": caller[4] or "👤",
                     "isMe": True,
+                    "replyTo": reply_to_data,
                 }
             })
         }

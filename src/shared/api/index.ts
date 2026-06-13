@@ -13,6 +13,13 @@ export type Chat = {
   onlineStatus?: string | null;
 };
 
+export type ReplyTo = {
+  id: number;
+  authorName: string;
+  text: string;
+  imageUrl?: string | null;
+};
+
 export type Message = {
   id: number;
   text: string;
@@ -23,6 +30,7 @@ export type Message = {
   displayName: string;
   avatar: string;
   isMe: boolean;
+  replyTo?: ReplyTo | null;
 };
 
 export type User = {
@@ -191,14 +199,14 @@ export async function getMessages(chatId: number, since?: number): Promise<Messa
   return (data.messages as Message[]) || [];
 }
 
-export async function sendMessage(chatId: number, text: string): Promise<Message> {
-  const { status, data } = await msgCall("POST", "send_message", { chatId, text });
+export async function sendMessage(chatId: number, text: string, replyToId?: number): Promise<Message> {
+  const { status, data } = await msgCall("POST", "send_message", { chatId, text, ...(replyToId ? { replyToId } : {}) });
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка отправки");
   return data.message as Message;
 }
 
-export async function sendPhoto(chatId: number, imageBase64: string, imageType: string, caption?: string): Promise<Message> {
-  const { status, data } = await msgCall("POST", "send_photo", { chatId, imageBase64, imageType, caption });
+export async function sendPhoto(chatId: number, imageBase64: string, imageType: string, caption?: string, replyToId?: number): Promise<Message> {
+  const { status, data } = await msgCall("POST", "send_photo", { chatId, imageBase64, imageType, caption, ...(replyToId ? { replyToId } : {}) });
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка отправки фото");
   return data.message as Message;
 }

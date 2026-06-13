@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/shared/ui/icon";
 import Avatar from "@/shared/ui/Avatar";
-import { Chat, Message, getMessages, sendMessage, sendPhoto } from "@/shared/api";
+import { Chat, Message, ReplyTo, getMessages, sendMessage, sendPhoto } from "@/shared/api";
 import ChatMessageBubble from "@/features/chat/ui/ChatMessageBubble";
 import { sendPushNotification } from "@/shared/lib/push";
 import { useAuth } from "@/shared/lib/AuthContext";
@@ -29,6 +29,7 @@ export default function ChatView({ chat, onBack }: Props) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ msg: Message; replyTo: ReplyTo } | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -79,10 +80,12 @@ export default function ChatView({ chat, onBack }: Props) {
   const handleSend = async () => {
     const text = input.trim();
     if (!text || sending) return;
+    const replyId = replyTo?.msg.id;
     setInput("");
+    setReplyTo(null);
     setSending(true);
     try {
-      const msg = await sendMessage(chat.id, text);
+      const msg = await sendMessage(chat.id, text, replyId);
       addMessage(msg);
       sendPushNotification(chat.id, user?.displayName || "Семейка", text);
     } catch {
@@ -115,7 +118,9 @@ export default function ChatView({ chat, onBack }: Props) {
       try {
         const dataUrl = ev.target?.result as string;
         const base64 = dataUrl.split(",")[1];
-        const msg = await sendPhoto(chat.id, base64, file.type);
+        const replyId = replyTo?.msg.id;
+        setReplyTo(null);
+        const msg = await sendPhoto(chat.id, base64, file.type, undefined, replyId);
         addMessage(msg);
         sendPushNotification(chat.id, user?.displayName || "Семейка", "📷 Фото");
       } catch { /* silent */ }
@@ -185,7 +190,16 @@ export default function ChatView({ chat, onBack }: Props) {
                       </span>
                     </div>
                   )}
-                  <ChatMessageBubble msg={msg} showAvatar={showAvatar} showName={showName} onImageClick={setLightboxUrl} />
+                  <ChatMessageBubble
+                    msg={msg}
+                    showAvatar={showAvatar}
+                    showName={showName}
+                    onImageClick={setLightboxUrl}
+                    onReply={(m) => {
+                      setReplyTo({ msg: m, replyTo: { id: m.id, authorName: m.displayName, text: m.text, imageUrl: m.imageUrl } });
+                      textareaRef.current?.focus();
+                    }}
+                  />
                 </div>
               );
             })}
@@ -193,6 +207,22 @@ export default function ChatView({ chat, onBack }: Props) {
         )}
         <div ref={bottomRef} />
       </div>
+
+      {replyTo && (
+        <div className="bg-white border-t border-border px-4 py-2 flex items-center gap-2 flex-shrink-0">
+          <div className="flex-1 border-l-2 pl-2.5 min-w-0" style={{ borderColor: "hsl(22,85%,60%)" }}>
+            <p className="text-[11px] font-semibold truncate" style={{ color: "hsl(22,85%,55%)" }}>
+              {replyTo.replyTo.authorName}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {replyTo.replyTo.imageUrl && (!replyTo.replyTo.text || replyTo.replyTo.text === "📷 Фото") ? "📷 Фото" : replyTo.replyTo.text}
+            </p>
+          </div>
+          <button onClick={() => setReplyTo(null)} className="p-1 rounded-full hover:bg-muted flex-shrink-0">
+            <Icon name="X" size={16} style={{ color: "hsl(25,15%,55%)" }} />
+          </button>
+        </div>
+      )}
 
       <div className="bg-white border-t border-border px-3 py-3 flex items-end gap-2 flex-shrink-0">
         <button
