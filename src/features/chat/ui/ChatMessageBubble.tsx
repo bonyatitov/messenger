@@ -42,7 +42,7 @@ export default function ChatMessageBubble({ msg, showAvatar, showName, onImageCl
 
   return (
     <div
-      className="flex items-end gap-2"
+      className="flex items-end gap-2 group"
       style={{ justifyContent: msg.isMe ? "flex-end" : "flex-start", marginBottom: 2 }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -59,24 +59,23 @@ export default function ChatMessageBubble({ msg, showAvatar, showName, onImageCl
         </div>
       )}
 
-      <div className="max-w-[72%] group relative">
+      {/* Кнопка ответа — слева от своего, справа от чужого (десктоп) */}
+      {msg.isMe && (
+        <button
+          onClick={() => onReply(msg)}
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full flex-shrink-0 self-center"
+          style={{ background: "hsl(35,25%,90%)" }}
+        >
+          <Icon name="Reply" size={14} style={{ color: "hsl(22,85%,55%)" }} />
+        </button>
+      )}
+
+      <div className="max-w-[72%]">
         {showName && (
           <p className="text-[10px] mb-1 ml-1" style={{ color: "hsl(22,85%,55%)", fontWeight: 700 }}>
             {msg.displayName}
           </p>
         )}
-
-        {/* Кнопка ответа на десктопе */}
-        <button
-          onClick={() => onReply(msg)}
-          className="absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full"
-          style={{
-            [msg.isMe ? "left" : "right"]: "calc(100% + 4px)",
-            background: "hsl(35,25%,90%)",
-          }}
-        >
-          <Icon name="Reply" size={14} style={{ color: "hsl(22,85%,55%)" }} />
-        </button>
 
         {hasImage ? (
           <div
@@ -116,6 +115,16 @@ export default function ChatMessageBubble({ msg, showAvatar, showName, onImageCl
           </div>
         )}
       </div>
+
+      {!msg.isMe && (
+        <button
+          onClick={() => onReply(msg)}
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full flex-shrink-0 self-center"
+          style={{ background: "hsl(35,25%,90%)" }}
+        >
+          <Icon name="Reply" size={14} style={{ color: "hsl(22,85%,55%)" }} />
+        </button>
+      )}
     </div>
   );
 }
