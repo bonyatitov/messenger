@@ -32,6 +32,7 @@ export default function ChatView({ chat, onBack }: Props) {
   const lastIdRef = useRef<number>(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = (smooth = false) =>
     bottomRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "instant" });
@@ -88,6 +89,15 @@ export default function ChatView({ chat, onBack }: Props) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
+
+  const autoResize = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  };
+
+  useEffect(() => { autoResize(); }, [input]);
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -184,13 +194,14 @@ export default function ChatView({ chat, onBack }: Props) {
 
         <div className="flex-1 bg-muted rounded-2xl px-4 py-2.5 flex items-end gap-2">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Сообщение..."
             rows={1}
             className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground resize-none leading-relaxed"
-            style={{ maxHeight: 120 }}
+            style={{ maxHeight: 120, overflowY: "auto" }}
           />
         </div>
         <button
