@@ -33,17 +33,6 @@ def cors():
         "Access-Control-Allow-Headers": "Content-Type, X-Authorization, X-Session-Id",
     }
 
-def ensure_sessions_table(cur):
-    cur.execute(f"""
-        CREATE TABLE IF NOT EXISTS {SCHEMA}.sessions (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            token VARCHAR(128) UNIQUE NOT NULL,
-            expires_at TIMESTAMP NOT NULL,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-    """)
-
 def get_user_by_session(cur, token):
     cur.execute(f"""
         SELECT u.id, u.username, u.display_name, u.role, u.avatar, u.bio, u.city, u.age, u.badge_text, u.badge_color
@@ -99,7 +88,6 @@ def handler(event: dict, context) -> dict:
         user_id = row[0]
         token = secrets.token_hex(32)
         expires = datetime.utcnow() + timedelta(days=SESSION_DURATION_DAYS)
-        ensure_sessions_table(cur)
         cur.execute(
             f"INSERT INTO {SCHEMA}.sessions (user_id, token, expires_at) VALUES (%s, %s, %s)",
             (user_id, token, expires)
@@ -123,8 +111,6 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
         conn = get_db()
         cur = conn.cursor()
-        ensure_sessions_table(cur)
-        conn.commit()
         row = get_user_by_session(cur, session_token)
         if not row:
             conn.close()
@@ -139,7 +125,6 @@ def handler(event: dict, context) -> dict:
         if session_token:
             conn = get_db()
             cur = conn.cursor()
-            ensure_sessions_table(cur)
             try:
                 cur.execute(f"DELETE FROM {SCHEMA}.sessions WHERE token = %s", (session_token,))
                 conn.commit()
@@ -154,8 +139,6 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
         conn = get_db()
         cur = conn.cursor()
-        ensure_sessions_table(cur)
-        conn.commit()
         caller = get_user_by_session(cur, session_token)
         if not caller or caller[3] != "admin":
             conn.close()
@@ -196,8 +179,6 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
         conn = get_db()
         cur = conn.cursor()
-        ensure_sessions_table(cur)
-        conn.commit()
         caller = get_user_by_session(cur, session_token)
         if not caller or caller[3] != "admin":
             conn.close()
@@ -222,8 +203,6 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Не указан userId"})}
         conn = get_db()
         cur = conn.cursor()
-        ensure_sessions_table(cur)
-        conn.commit()
         caller = get_user_by_session(cur, session_token)
         if not caller or caller[3] != "admin":
             conn.close()
@@ -239,7 +218,7 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
 
-    # change_password — смена пароля текущего пользователя
+    # change_password
     if method == "POST" and action == "change_password":
         if not session_token:
             return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
@@ -251,8 +230,6 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Пароль должен быть не короче 4 символов"})}
         conn = get_db()
         cur = conn.cursor()
-        ensure_sessions_table(cur)
-        conn.commit()
         caller = get_user_by_session(cur, session_token)
         if not caller:
             conn.close()
@@ -267,14 +244,12 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
 
-    # update_avatar — смена аватара (эмодзи или загрузка картинки)
+    # update_avatar
     if method == "POST" and action == "update_avatar":
         if not session_token:
             return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
         conn = get_db()
         cur = conn.cursor()
-        ensure_sessions_table(cur)
-        conn.commit()
         caller = get_user_by_session(cur, session_token)
         if not caller:
             conn.close()
@@ -310,8 +285,10 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Нет данных для обновления"})}
 
-    # update_badge — только admin, устанавливает бейджик любому пользователю
+    # update_badge — только admin
     if method == "POST" and action == "update_badge":
+        if not session_token:
+            return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
         conn = get_db()
         cur = conn.cursor()
         caller = get_user_by_session(cur, session_token)

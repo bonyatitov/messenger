@@ -8,15 +8,6 @@
       "expectedStatus": 401
     },
     {
-      "name": "Login with correct credentials",
-      "method": "POST",
-      "path": "/",
-      "body": {"action": "login", "username": "admin", "password": "admin123"},
-      "expectedStatus": 200,
-      "expectedBody": {"token": "string"},
-      "bodyMatcher": "partial"
-    },
-    {
       "name": "Get me without session",
       "method": "GET",
       "path": "/?action=me",

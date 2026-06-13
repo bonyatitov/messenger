@@ -40,6 +40,19 @@ def format_online(last_seen):
         return f"был(а) {delta.days} дн назад"
     return f"был(а) {last_seen.strftime('%d.%m')}"
 
+def format_time(last_at):
+    if not last_at:
+        return ""
+    now = datetime.utcnow()
+    delta = now - last_at.replace(tzinfo=None)
+    if delta.days == 0:
+        return last_at.strftime("%H:%M")
+    if delta.days == 1:
+        return "Вчера"
+    if delta.days < 7:
+        return ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"][last_at.weekday()]
+    return last_at.strftime("%d.%m")
+
 def get_user_by_session(cur, token):
     cur.execute(f"""
         SELECT u.id, u.username, u.display_name, u.role, u.avatar
@@ -79,12 +92,11 @@ def handler(event: dict, context) -> dict:
 
     caller_id = caller[0]
 
-    # Обновляем last_seen при каждом запросе
-    cur.execute(f"UPDATE {SCHEMA}.users SET last_seen = NOW() WHERE id = %s", (caller_id,))
-    conn.commit()
-
     # list_chats — список чатов пользователя
     if action == "list_chats":
+        # Обновляем last_seen только при открытии чатов (не на каждый запрос)
+        cur.execute(f"UPDATE {SCHEMA}.users SET last_seen = NOW() WHERE id = %s", (caller_id,))
+
         cur.execute(f"""
             SELECT
                 c.id, c.name, c.is_group, c.avatar,
@@ -99,7 +111,10 @@ def handler(event: dict, context) -> dict:
                         (SELECT MAX(m3.created_at) FROM {SCHEMA}.messages m3
                          WHERE m3.chat_id = c.id AND m3.user_id = %s), '2000-01-01'
                     )
-                ) AS unread
+                ) AS unread,
+                ou.display_name AS other_name,
+                ou.avatar AS other_avatar,
+                ou.last_seen AS other_last_seen
             FROM {SCHEMA}.chats c
             JOIN {SCHEMA}.chat_members cm ON cm.chat_id = c.id AND cm.user_id = %s
             LEFT JOIN LATERAL (
@@ -107,44 +122,32 @@ def handler(event: dict, context) -> dict:
                 WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1
             ) m ON TRUE
             LEFT JOIN {SCHEMA}.users mu ON mu.id = m.user_id
+            LEFT JOIN LATERAL (
+                SELECT u.display_name, u.avatar, u.last_seen
+                FROM {SCHEMA}.chat_members cm2
+                JOIN {SCHEMA}.users u ON u.id = cm2.user_id
+                WHERE cm2.chat_id = c.id AND cm2.user_id != %s AND c.is_group = FALSE
+                LIMIT 1
+            ) ou ON TRUE
             ORDER BY COALESCE(m.created_at, c.created_at) DESC
-        """, (caller_id, caller_id, caller_id))
+        """, (caller_id, caller_id, caller_id, caller_id))
         rows = cur.fetchall()
+        conn.commit()
+        conn.close()
 
-        # For direct chats — get the other person's name/avatar
         chats = []
         for row in rows:
-            chat_id, name, is_group, avatar, last_text, last_author, last_at, unread = row
-            display_name = name
-            display_avatar = avatar
-            other_last_seen = None
-            if not is_group:
-                cur.execute(f"""
-                    SELECT u.display_name, u.avatar, u.last_seen FROM {SCHEMA}.chat_members cm
-                    JOIN {SCHEMA}.users u ON u.id = cm.user_id
-                    WHERE cm.chat_id = %s AND cm.user_id != %s LIMIT 1
-                """, (chat_id, caller_id))
-                other = cur.fetchone()
-                if other:
-                    display_name = other[0]
-                    display_avatar = other[1] or "👤"
-                    other_last_seen = other[2]
+            chat_id, name, is_group, avatar, last_text, last_author, last_at, unread, \
+                other_name, other_avatar, other_last_seen = row
 
-            time_str = ""
-            if last_at:
-                now = datetime.utcnow()
-                delta = now - last_at.replace(tzinfo=None)
-                if delta.days == 0:
-                    time_str = last_at.strftime("%H:%M")
-                elif delta.days == 1:
-                    time_str = "Вчера"
-                elif delta.days < 7:
-                    days = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
-                    time_str = days[last_at.weekday()]
-                else:
-                    time_str = last_at.strftime("%d.%m")
-
-            online_status = format_online(other_last_seen) if not is_group else None
+            if not is_group and other_name:
+                display_name = other_name
+                display_avatar = other_avatar or "👤"
+                online_status = format_online(other_last_seen)
+            else:
+                display_name = name
+                display_avatar = avatar
+                online_status = None
 
             chats.append({
                 "id": chat_id,
@@ -153,12 +156,11 @@ def handler(event: dict, context) -> dict:
                 "isGroup": is_group,
                 "lastText": last_text or "",
                 "lastAuthor": last_author or "",
-                "lastAt": time_str,
+                "lastAt": format_time(last_at),
                 "unread": int(unread or 0),
                 "onlineStatus": online_status,
             })
 
-        conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"chats": chats})}
 
     # get_messages — сообщения чата
@@ -168,7 +170,6 @@ def handler(event: dict, context) -> dict:
             conn.close()
             return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Нет chatId"})}
 
-        # Проверяем что пользователь — участник чата
         cur.execute(f"SELECT 1 FROM {SCHEMA}.chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, caller_id))
         if not cur.fetchone():
             conn.close()
@@ -194,20 +195,17 @@ def handler(event: dict, context) -> dict:
             """, (chat_id,))
 
         rows = cur.fetchall()
-        messages = []
-        for r in rows:
-            msg_id, text, image_url, created_at, uid, display_name, avatar = r
-            messages.append({
-                "id": msg_id,
-                "text": text,
-                "imageUrl": image_url,
-                "time": created_at.strftime("%H:%M") if created_at else "",
-                "userId": uid,
-                "displayName": display_name,
-                "avatar": avatar or "👤",
-                "isMe": uid == caller_id,
-            })
         conn.close()
+        messages = [{
+            "id": r[0],
+            "text": r[1],
+            "imageUrl": r[2],
+            "time": r[3].strftime("%H:%M") if r[3] else "",
+            "userId": r[4],
+            "displayName": r[5],
+            "avatar": r[6] or "👤",
+            "isMe": r[4] == caller_id,
+        } for r in rows]
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"messages": messages})}
 
     # send_message
@@ -247,7 +245,7 @@ def handler(event: dict, context) -> dict:
             })
         }
 
-    # send_photo — загрузка фото и отправка в чат
+    # send_photo
     if action == "send_photo":
         chat_id = body.get("chatId")
         image_b64 = body.get("imageBase64")
@@ -329,7 +327,6 @@ def handler(event: dict, context) -> dict:
             conn.close()
             return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Нет targetUserId"})}
 
-        # Проверяем, нет ли уже личного чата между этими двумя
         cur.execute(f"""
             SELECT c.id FROM {SCHEMA}.chats c
             JOIN {SCHEMA}.chat_members cm1 ON cm1.chat_id = c.id AND cm1.user_id = %s
@@ -353,7 +350,7 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True, "chatId": chat_id})}
 
-    # delete_chat — удалить чат (покинуть для личного, удалить для группового если создатель)
+    # delete_chat
     if action == "delete_chat":
         chat_id = body.get("chatId")
         if not chat_id:
@@ -372,12 +369,9 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
 
-    # get_users — список пользователей (для admin — все, для остальных — только добавленные в семью)
+    # get_users — роль берём из caller, лишний SELECT убран
     if action == "get_users":
-        caller_role = caller[1] if len(caller) > 1 else None
-        cur.execute(f"SELECT role FROM {SCHEMA}.users WHERE id = %s", (caller_id,))
-        role_row = cur.fetchone()
-        is_admin = role_row and role_row[0] == "admin"
+        is_admin = caller[3] == "admin"
 
         if is_admin:
             cur.execute(f"""
@@ -405,7 +399,7 @@ def handler(event: dict, context) -> dict:
         } for r in rows]
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"users": users, "isAdmin": is_admin})}
 
-    # search_users — поиск всех пользователей по имени/username (для обычного пользователя)
+    # search_users
     if action == "search_users":
         query = (body.get("query") or (event.get("queryStringParameters") or {}).get("query") or "").strip().lower()
         if len(query) < 2:
@@ -429,7 +423,7 @@ def handler(event: dict, context) -> dict:
         } for r in rows]
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"users": users})}
 
-    # add_family — добавить пользователя в семью
+    # add_family
     if action == "add_family":
         member_id = int(body.get("memberId", 0))
         if not member_id:
@@ -443,7 +437,7 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
 
-    # remove_family — убрать пользователя из семьи
+    # remove_family
     if action == "remove_family":
         member_id = int(body.get("memberId", 0))
         if not member_id:
