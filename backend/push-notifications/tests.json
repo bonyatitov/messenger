@@ -1,0 +1,29 @@
+{
+  "tests": [
+    {
+      "name": "get_vapid_public_key",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "get_vapid_public_key"},
+      "expectedStatus": 200,
+      "expectedBody": {"publicKey": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "subscribe — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "subscribe"},
+      "expectedStatus": 401,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "send_push — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "send_push"},
+      "expectedStatus": 401,
+      "bodyMatcher": "partial"
+    }
+  ]
+}
