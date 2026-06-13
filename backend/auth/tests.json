@@ -82,6 +82,20 @@
       "expectedStatus": 401
     },
     {
+      "name": "reset_password_admin — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "reset_password_admin", "userId": 2, "newPassword": "1234"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "login — attemptsLeft присутствует в ответе",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "login", "username": "nobody_xyz_999test", "password": "wrong"},
+      "expectedStatus": 401
+    },
+    {
       "name": "unknown action",
       "method": "GET",
       "path": "/?action=does_not_exist",

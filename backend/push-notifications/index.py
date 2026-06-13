@@ -6,15 +6,28 @@ from pywebpush import webpush, WebPushException
 
 SCHEMA = "t_p3482084_react_native_family_"
 
+# Кэшируем константы — вычисляются один раз при старте контейнера
+_CORS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
+}
+_VAPID_PUBLIC_KEY = None   # будет прочитан при первом вызове
+_VAPID_PRIVATE_KEY = None
+_VAPID_EMAIL = "mailto:support@semejka.app"
+
+def cors():
+    return _CORS
+
 def get_db():
     return psycopg2.connect(os.environ["DATABASE_URL"])
 
-def cors():
-    return {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
-    }
+def get_vapid_keys():
+    global _VAPID_PUBLIC_KEY, _VAPID_PRIVATE_KEY
+    if _VAPID_PRIVATE_KEY is None:
+        _VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+        _VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+    return _VAPID_PUBLIC_KEY, _VAPID_PRIVATE_KEY
 
 def get_caller(cur, event):
     headers = event.get("headers") or {}
@@ -32,21 +45,22 @@ def get_caller(cur, event):
 def handler(event: dict, context) -> dict:
     """Управление push-подписками и отправка уведомлений"""
     if event.get("httpMethod") == "OPTIONS":
-        return {"statusCode": 200, "headers": cors(), "body": ""}
+        return {"statusCode": 200, "headers": _CORS, "body": ""}
 
     body = {}
-    if event.get("body"):
-        body = json.loads(event["body"])
+    raw = event.get("body")
+    if raw:
+        try:
+            body = json.loads(raw)
+        except Exception:
+            body = {}
 
     action = body.get("action") or (event.get("queryStringParameters") or {}).get("action")
 
-    # Получить публичный VAPID ключ (открытый, без авторизации)
+    # Получить публичный VAPID ключ (без авторизации)
     if action == "get_vapid_public_key":
-        return {
-            "statusCode": 200,
-            "headers": cors(),
-            "body": json.dumps({"publicKey": os.environ.get("VAPID_PUBLIC_KEY", "")})
-        }
+        pub, _ = get_vapid_keys()
+        return {"statusCode": 200, "headers": _CORS, "body": json.dumps({"publicKey": pub})}
 
     conn = get_db()
     cur = conn.cursor()
@@ -54,7 +68,7 @@ def handler(event: dict, context) -> dict:
 
     if not caller_id:
         conn.close()
-        return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
+        return {"statusCode": 401, "headers": _CORS, "body": json.dumps({"error": "Не авторизован"})}
 
     # Сохранить подписку
     if action == "subscribe":
@@ -63,8 +77,7 @@ def handler(event: dict, context) -> dict:
         auth = body.get("auth")
         if not endpoint or not p256dh or not auth:
             conn.close()
-            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Нет данных подписки"})}
-
+            return {"statusCode": 400, "headers": _CORS, "body": json.dumps({"error": "Нет данных подписки"})}
         cur.execute(f"""
             INSERT INTO {SCHEMA}.push_subscriptions (user_id, endpoint, p256dh, auth)
             VALUES (%s, %s, %s, %s)
@@ -72,7 +85,7 @@ def handler(event: dict, context) -> dict:
         """, (caller_id, endpoint, p256dh, auth))
         conn.commit()
         conn.close()
-        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
+        return {"statusCode": 200, "headers": _CORS, "body": json.dumps({"ok": True})}
 
     # Удалить подписку при выходе из аккаунта
     if action == "unsubscribe":
@@ -84,7 +97,7 @@ def handler(event: dict, context) -> dict:
             )
             conn.commit()
         conn.close()
-        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
+        return {"statusCode": 200, "headers": _CORS, "body": json.dumps({"ok": True})}
 
     # Отправить push всем участникам чата (кроме отправителя)
     if action == "send_push":
@@ -94,7 +107,7 @@ def handler(event: dict, context) -> dict:
 
         if not chat_id:
             conn.close()
-            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Нет chatId"})}
+            return {"statusCode": 400, "headers": _CORS, "body": json.dumps({"error": "Нет chatId"})}
 
         cur.execute(f"""
             SELECT ps.endpoint, ps.p256dh, ps.auth
@@ -102,13 +115,15 @@ def handler(event: dict, context) -> dict:
             JOIN {SCHEMA}.chat_members cm ON cm.user_id = ps.user_id
             WHERE cm.chat_id = %s AND ps.user_id != %s
         """, (chat_id, caller_id))
-
         rows = cur.fetchall()
         conn.close()
 
-        vapid_private = os.environ.get("VAPID_PRIVATE_KEY", "")
-        vapid_email = "mailto:support@semejka.app"
+        if not rows:
+            return {"statusCode": 200, "headers": _CORS, "body": json.dumps({"sent": 0, "failed": 0})}
+
+        _, vapid_private = get_vapid_keys()
         payload = json.dumps({"title": title, "body": message, "chatId": chat_id})
+        vapid_claims = {"sub": _VAPID_EMAIL}
         sent = 0
         failed = 0
 
@@ -118,13 +133,13 @@ def handler(event: dict, context) -> dict:
                     subscription_info={"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth_key}},
                     data=payload,
                     vapid_private_key=vapid_private,
-                    vapid_claims={"sub": vapid_email},
+                    vapid_claims=vapid_claims,
                 )
                 sent += 1
             except WebPushException:
                 failed += 1
 
-        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"sent": sent, "failed": failed})}
+        return {"statusCode": 200, "headers": _CORS, "body": json.dumps({"sent": sent, "failed": failed})}
 
     conn.close()
-    return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Неизвестное действие"})}
+    return {"statusCode": 400, "headers": _CORS, "body": json.dumps({"error": "Неизвестное действие"})}

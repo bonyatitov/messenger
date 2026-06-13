@@ -8,56 +8,57 @@ import psycopg2
 from datetime import datetime, timezone, timedelta
 
 MSK = timezone(timedelta(hours=3))
+SCHEMA = "t_p3482084_react_native_family_"
+LAST_SEEN_THROTTLE_SEC = 60  # обновляем last_seen не чаще раза в минуту
+
+# Кэшируем CORS — создаётся один раз при старте контейнера
+_CORS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
+}
+_WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
 
 def to_msk(dt):
     if dt is None:
         return None
     return dt.replace(tzinfo=timezone.utc).astimezone(MSK)
 
-SCHEMA = "t_p3482084_react_native_family_"
-
 def get_db():
     return psycopg2.connect(os.environ["DATABASE_URL"])
 
 def cors():
-    return {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
-    }
+    return _CORS
 
-def format_online(last_seen):
-    """Возвращает 'online' если был < 3 мин назад, иначе строку 'был(а) N назад'"""
+def format_online(last_seen, now):
+    """Возвращает 'online' если был < 3 мин назад, иначе строку 'был(а) N назад'.
+    now передаётся снаружи чтобы не вызывать utcnow() на каждую строку."""
     if not last_seen:
         return None
-    now = datetime.utcnow()
     delta = now - last_seen.replace(tzinfo=None)
     seconds = int(delta.total_seconds())
     if seconds < 180:
         return "online"
     if seconds < 3600:
-        m = seconds // 60
-        return f"был(а) {m} мин назад"
+        return f"был(а) {seconds // 60} мин назад"
     if seconds < 86400:
-        h = seconds // 3600
-        return f"был(а) {h} ч назад"
+        return f"был(а) {seconds // 3600} ч назад"
     if delta.days == 1:
         return "был(а) вчера"
     if delta.days < 7:
         return f"был(а) {delta.days} дн назад"
     return f"был(а) {last_seen.strftime('%d.%m')}"
 
-def format_time(last_at):
+def format_time(last_at, now):
     if not last_at:
         return ""
-    now = datetime.utcnow()
     delta = now - last_at.replace(tzinfo=None)
     if delta.days == 0:
         return last_at.strftime("%H:%M")
     if delta.days == 1:
         return "Вчера"
     if delta.days < 7:
-        return ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"][last_at.weekday()]
+        return _WEEKDAYS[last_at.weekday()]
     return last_at.strftime("%d.%m")
 
 def get_user_by_session(cur, token):
@@ -78,10 +79,11 @@ def handler(event: dict, context) -> dict:
     body = {}
     if event.get("body"):
         try:
-            raw = json.loads(event["body"])
-            body = json.loads(raw) if isinstance(raw, str) else raw
+            body = json.loads(event["body"])
+            if isinstance(body, str):
+                body = json.loads(body)
         except Exception:
-            pass
+            body = {}
 
     headers = event.get("headers", {}) or {}
     token = headers.get("X-Session-Id") or (event.get("queryStringParameters") or {}).get("session")
@@ -101,8 +103,12 @@ def handler(event: dict, context) -> dict:
 
     # list_chats — список чатов пользователя
     if action == "list_chats":
-        # Обновляем last_seen только при открытии чатов (не на каждый запрос)
-        cur.execute(f"UPDATE {SCHEMA}.users SET last_seen = NOW() WHERE id = %s", (caller_id,))
+        now = datetime.utcnow()
+        # Обновляем last_seen не чаще раза в LAST_SEEN_THROTTLE_SEC секунд
+        cur.execute(
+            f"UPDATE {SCHEMA}.users SET last_seen = NOW() WHERE id = %s AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '{LAST_SEEN_THROTTLE_SEC} seconds')",
+            (caller_id,)
+        )
 
         cur.execute(f"""
             SELECT
@@ -150,7 +156,7 @@ def handler(event: dict, context) -> dict:
             if not is_group and other_name:
                 display_name = other_name
                 display_avatar = other_avatar or "👤"
-                online_status = format_online(other_last_seen)
+                online_status = format_online(other_last_seen, now)
             else:
                 display_name = name
                 display_avatar = avatar
@@ -163,7 +169,7 @@ def handler(event: dict, context) -> dict:
                 "isGroup": is_group,
                 "lastText": last_text or "",
                 "lastAuthor": last_author or "",
-                "lastAt": format_time(last_at),
+                "lastAt": format_time(last_at, now),
                 "unread": int(unread or 0),
                 "onlineStatus": online_status,
             })
@@ -423,6 +429,7 @@ def handler(event: dict, context) -> dict:
     # get_users — роль берём из caller, лишний SELECT убран
     if action == "get_users":
         is_admin = caller[3] == "admin"
+        now = datetime.utcnow()
 
         if is_admin:
             cur.execute(f"""
@@ -444,7 +451,7 @@ def handler(event: dict, context) -> dict:
         conn.close()
         users = [{
             "id": r[0], "displayName": r[1], "avatar": r[2] or "👤",
-            "city": r[3] or "", "onlineStatus": format_online(r[4]),
+            "city": r[3] or "", "onlineStatus": format_online(r[4], now),
             "role": r[5] or "member", "inFamily": r[6],
             "badgeText": r[7] or "", "badgeColor": r[8] or ""
         } for r in rows]
@@ -456,6 +463,7 @@ def handler(event: dict, context) -> dict:
         if len(query) < 2:
             conn.close()
             return {"statusCode": 200, "headers": cors(), "body": json.dumps({"users": []})}
+        now = datetime.utcnow()
         cur.execute(f"""
             SELECT u.id, u.display_name, u.avatar, u.city, u.last_seen, u.role,
                 EXISTS(SELECT 1 FROM {SCHEMA}.family_members fm WHERE fm.user_id = %s AND fm.member_id = u.id) as in_family,
@@ -468,7 +476,7 @@ def handler(event: dict, context) -> dict:
         conn.close()
         users = [{
             "id": r[0], "displayName": r[1], "avatar": r[2] or "👤",
-            "city": r[3] or "", "onlineStatus": format_online(r[4]),
+            "city": r[3] or "", "onlineStatus": format_online(r[4], now),
             "role": r[5] or "member", "inFamily": r[6],
             "badgeText": r[7] or "", "badgeColor": r[8] or ""
         } for r in rows]
@@ -521,7 +529,8 @@ def handler(event: dict, context) -> dict:
         chat_row = cur.fetchone()
         creator_id = chat_row[0] if chat_row else None
         conn.close()
-        members = [{"id": r[0], "displayName": r[1], "avatar": r[2] or "👤", "onlineStatus": format_online(r[3]), "isCreator": r[0] == creator_id} for r in rows]
+        now = datetime.utcnow()
+        members = [{"id": r[0], "displayName": r[1], "avatar": r[2] or "👤", "onlineStatus": format_online(r[3], now), "isCreator": r[0] == creator_id} for r in rows]
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"members": members, "creatorId": creator_id, "callerId": caller_id})}
 
     # add_chat_member — добавить участника в групповой чат

@@ -13,44 +13,46 @@ SESSION_DURATION_DAYS = 30
 MAX_LOGIN_ATTEMPTS = 3
 LOCKOUT_MINUTES = 30
 
+# Кэшируем salt и CORS — вычисляются один раз при старте контейнера
+_SALT = hashlib.sha256(b"familychat_salt_2024").hexdigest()[:16]
+_CORS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-Authorization, X-Session-Id",
+}
+
 def get_db():
     return psycopg2.connect(os.environ["DATABASE_URL"])
 
-def is_locked_out(cur, username: str) -> bool:
-    since = datetime.utcnow() - timedelta(minutes=LOCKOUT_MINUTES)
-    cur.execute(f"""
-        SELECT COUNT(*) FROM {SCHEMA}.login_attempts
-        WHERE username = %s AND attempted_at > %s
-    """, (username.lower(), since))
-    count = cur.fetchone()[0]
-    return count >= MAX_LOGIN_ATTEMPTS
-
-def record_attempt(cur, username: str, ip: str):
-    cur.execute(f"""
-        INSERT INTO {SCHEMA}.login_attempts (username, ip) VALUES (%s, %s)
-    """, (username.lower(), ip))
-
-def clear_attempts(cur, username: str):
-    cur.execute(f"DELETE FROM {SCHEMA}.login_attempts WHERE username = %s", (username.lower(),))
+def cors():
+    return _CORS
 
 def hash_password(password: str) -> str:
-    salt = hashlib.sha256(b"familychat_salt_2024").hexdigest()[:16]
-    return hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+    return hashlib.sha256(f"{_SALT}{password}".encode()).hexdigest()
 
 def check_password(password: str, stored_hash: str) -> bool:
     if stored_hash == hash_password(password):
         return True
-    direct_hash = hashlib.sha256(password.encode()).hexdigest()
-    if stored_hash.endswith(direct_hash):
-        return True
-    return False
+    # обратная совместимость со старым форматом без соли
+    return stored_hash.endswith(hashlib.sha256(password.encode()).hexdigest())
 
-def cors():
-    return {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, X-Authorization, X-Session-Id",
-    }
+def get_attempt_count(cur, username: str) -> int:
+    """Возвращает количество попыток за последние LOCKOUT_MINUTES минут."""
+    since = datetime.utcnow() - timedelta(minutes=LOCKOUT_MINUTES)
+    cur.execute(
+        f"SELECT COUNT(*) FROM {SCHEMA}.login_attempts WHERE username = %s AND attempted_at > %s",
+        (username, since)
+    )
+    return cur.fetchone()[0]
+
+def record_attempt(cur, username: str, ip: str):
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.login_attempts (username, ip) VALUES (%s, %s)",
+        (username, ip)
+    )
+
+def clear_attempts(cur, username: str):
+    cur.execute(f"DELETE FROM {SCHEMA}.login_attempts WHERE username = %s", (username,))
 
 def get_user_by_session(cur, token):
     cur.execute(f"""
@@ -97,7 +99,8 @@ def handler(event: dict, context) -> dict:
         conn = get_db()
         cur = conn.cursor()
 
-        if is_locked_out(cur, username):
+        attempts_before = get_attempt_count(cur, username)
+        if attempts_before >= MAX_LOGIN_ATTEMPTS:
             conn.close()
             return {"statusCode": 423, "headers": cors(), "body": json.dumps({
                 "error": "Превышено количество попыток входа. Пожалуйста, свяжитесь с администратором для восстановления доступа.",
@@ -112,12 +115,8 @@ def handler(event: dict, context) -> dict:
         if not row or not check_password(password, row[8]):
             record_attempt(cur, username, ip)
             conn.commit()
-            # Считаем сколько попыток осталось
-            since = datetime.utcnow() - timedelta(minutes=LOCKOUT_MINUTES)
-            cur.execute(f"SELECT COUNT(*) FROM {SCHEMA}.login_attempts WHERE username = %s AND attempted_at > %s", (username, since))
-            attempts = cur.fetchone()[0]
-            remaining = max(0, MAX_LOGIN_ATTEMPTS - attempts)
             conn.close()
+            remaining = max(0, MAX_LOGIN_ATTEMPTS - attempts_before - 1)
             if remaining == 0:
                 return {"statusCode": 423, "headers": cors(), "body": json.dumps({
                     "error": "Превышено количество попыток входа. Пожалуйста, свяжитесь с администратором для восстановления доступа.",

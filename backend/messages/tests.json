@@ -75,6 +75,33 @@
       "expectedStatus": 401
     },
     {
+      "name": "get_chat_members — без авторизации",
+      "method": "GET",
+      "path": "/?action=get_chat_members&chatId=1",
+      "expectedStatus": 401
+    },
+    {
+      "name": "add_chat_member — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "add_chat_member", "chatId": 1, "userId": 2},
+      "expectedStatus": 401
+    },
+    {
+      "name": "remove_chat_member — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "remove_chat_member", "chatId": 1, "userId": 2},
+      "expectedStatus": 401
+    },
+    {
+      "name": "send_message с replyToId — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "send_message", "chatId": 1, "text": "привет", "replyToId": 5},
+      "expectedStatus": 401
+    },
+    {
       "name": "unknown action",
       "method": "GET",
       "path": "/?action=does_not_exist",
