@@ -460,5 +460,70 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
 
+    # get_chat_members — участники группового чата
+    if action == "get_chat_members":
+        chat_id = int(body.get("chatId") or (event.get("queryStringParameters") or {}).get("chatId") or 0)
+        if not chat_id:
+            conn.close()
+            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Нет chatId"})}
+        cur.execute(f"SELECT 1 FROM {SCHEMA}.chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, caller_id))
+        if not cur.fetchone():
+            conn.close()
+            return {"statusCode": 403, "headers": cors(), "body": json.dumps({"error": "Нет доступа"})}
+        cur.execute(f"""
+            SELECT u.id, u.display_name, u.avatar, u.last_seen
+            FROM {SCHEMA}.users u
+            JOIN {SCHEMA}.chat_members cm ON cm.user_id = u.id
+            WHERE cm.chat_id = %s
+            ORDER BY u.display_name
+        """, (chat_id,))
+        rows = cur.fetchall()
+        cur.execute(f"SELECT created_by FROM {SCHEMA}.chats WHERE id = %s", (chat_id,))
+        chat_row = cur.fetchone()
+        creator_id = chat_row[0] if chat_row else None
+        conn.close()
+        members = [{"id": r[0], "displayName": r[1], "avatar": r[2] or "👤", "onlineStatus": format_online(r[3]), "isCreator": r[0] == creator_id} for r in rows]
+        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"members": members, "creatorId": creator_id, "callerId": caller_id})}
+
+    # add_chat_member — добавить участника в групповой чат
+    if action == "add_chat_member":
+        chat_id = int(body.get("chatId") or 0)
+        user_id = int(body.get("userId") or 0)
+        if not chat_id or not user_id:
+            conn.close()
+            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Нет chatId или userId"})}
+        cur.execute(f"SELECT is_group, created_by FROM {SCHEMA}.chats WHERE id = %s", (chat_id,))
+        chat_row = cur.fetchone()
+        if not chat_row or not chat_row[0]:
+            conn.close()
+            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Чат не найден или не групповой"})}
+        cur.execute(f"SELECT 1 FROM {SCHEMA}.chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, caller_id))
+        if not cur.fetchone():
+            conn.close()
+            return {"statusCode": 403, "headers": cors(), "body": json.dumps({"error": "Нет доступа"})}
+        cur.execute(f"INSERT INTO {SCHEMA}.chat_members (chat_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (chat_id, user_id))
+        conn.commit()
+        conn.close()
+        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
+
+    # remove_chat_member — удалить участника из группового чата
+    if action == "remove_chat_member":
+        chat_id = int(body.get("chatId") or 0)
+        user_id = int(body.get("userId") or 0)
+        if not chat_id or not user_id:
+            conn.close()
+            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Нет chatId или userId"})}
+        cur.execute(f"SELECT created_by FROM {SCHEMA}.chats WHERE id = %s", (chat_id,))
+        chat_row = cur.fetchone()
+        creator_id = chat_row[0] if chat_row else None
+        # Удалять может создатель чата или сам себя
+        if caller_id != creator_id and caller_id != user_id:
+            conn.close()
+            return {"statusCode": 403, "headers": cors(), "body": json.dumps({"error": "Только создатель может удалять участников"})}
+        cur.execute(f"DELETE FROM {SCHEMA}.chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, user_id))
+        conn.commit()
+        conn.close()
+        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
+
     conn.close()
     return {"statusCode": 404, "headers": cors(), "body": json.dumps({"error": "Unknown action"})}

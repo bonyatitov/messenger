@@ -5,6 +5,7 @@ import { Chat, Message, getMessages, sendMessage, sendPhoto } from "@/shared/api
 import ChatMessageBubble from "@/features/chat/ui/ChatMessageBubble";
 import { sendPushNotification } from "@/shared/lib/push";
 import { useAuth } from "@/shared/lib/AuthContext";
+import GroupInfoModal from "@/features/chat/ui/GroupInfoModal";
 
 function formatDateSep(dateStr: string): string {
   if (!dateStr) return "";
@@ -27,6 +28,7 @@ type Props = { chat: Chat; onBack: () => void };
 export default function ChatView({ chat, onBack }: Props) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -150,6 +152,11 @@ export default function ChatView({ chat, onBack }: Props) {
                   : "Личные сообщения"}
           </p>
         </div>
+        {chat.isGroup && (
+          <button onClick={() => setShowGroupInfo(true)} className="p-1.5 rounded-full hover:bg-muted transition-colors flex-shrink-0">
+            <Icon name="Users" size={20} style={{ color: "hsl(22,85%,58%)" }} />
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-hide" style={{ background: "hsl(36,33%,97%)" }}>
@@ -244,6 +251,9 @@ export default function ChatView({ chat, onBack }: Props) {
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+      {showGroupInfo && (
+        <GroupInfoModal chatId={chat.id} chatName={chat.name} onClose={() => setShowGroupInfo(false)} />
       )}
     </div>
   );

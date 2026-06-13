@@ -247,3 +247,26 @@ export async function searchUsers(query: string): Promise<FamilyUser[]> {
   const { data } = await msgCall("POST", "search_users", { query });
   return (data.users as FamilyUser[]) || [];
 }
+
+export type ChatMember = {
+  id: number;
+  displayName: string;
+  avatar: string;
+  onlineStatus?: string | null;
+  isCreator: boolean;
+};
+
+export async function getChatMembers(chatId: number): Promise<{ members: ChatMember[]; creatorId: number; callerId: number }> {
+  const { data } = await msgCall("GET", "get_chat_members", { chatId: String(chatId) });
+  return { members: (data.members as ChatMember[]) || [], creatorId: data.creatorId as number, callerId: data.callerId as number };
+}
+
+export async function addChatMember(chatId: number, userId: number): Promise<void> {
+  const { status, data } = await msgCall("POST", "add_chat_member", { chatId, userId });
+  if (status !== 200) throw new Error((data?.error as string) || "Ошибка добавления");
+}
+
+export async function removeChatMember(chatId: number, userId: number): Promise<void> {
+  const { status, data } = await msgCall("POST", "remove_chat_member", { chatId, userId });
+  if (status !== 200) throw new Error((data?.error as string) || "Ошибка удаления");
+}
