@@ -1,17 +1,91 @@
 {
   "tests": [
     {
-      "name": "Login with wrong password",
+      "name": "Login — неверный пароль",
       "method": "POST",
       "path": "/",
       "body": {"action": "login", "username": "admin", "password": "wrong"},
       "expectedStatus": 401
     },
     {
-      "name": "Get me without session",
+      "name": "Login — пустые поля",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "login", "username": "", "password": ""},
+      "expectedStatus": 400
+    },
+    {
+      "name": "Login — несуществующий пользователь",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "login", "username": "nobody_xyz_123", "password": "pass"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "me — без токена",
       "method": "GET",
       "path": "/?action=me",
       "expectedStatus": 401
+    },
+    {
+      "name": "me — невалидный токен",
+      "method": "GET",
+      "path": "/?action=me&session=invalidtoken000",
+      "expectedStatus": 401
+    },
+    {
+      "name": "logout — без токена (должен вернуть ok)",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "logout"},
+      "expectedStatus": 200
+    },
+    {
+      "name": "create_user — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "create_user", "username": "test", "displayName": "Test", "password": "1234"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "list_users — без авторизации",
+      "method": "GET",
+      "path": "/?action=list_users",
+      "expectedStatus": 401
+    },
+    {
+      "name": "delete_user — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "delete_user", "userId": 1},
+      "expectedStatus": 401
+    },
+    {
+      "name": "change_password — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "change_password", "oldPassword": "a", "newPassword": "b"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "update_avatar — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "update_avatar", "emoji": "🐱"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "update_badge — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "update_badge", "userId": 1, "badgeText": "VIP"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "unknown action",
+      "method": "GET",
+      "path": "/?action=does_not_exist",
+      "expectedStatus": 404
     }
   ]
 }

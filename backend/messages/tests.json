@@ -1,23 +1,83 @@
 {
   "tests": [
     {
-      "name": "list_chats without auth",
+      "name": "list_chats — без авторизации",
       "method": "GET",
       "path": "/?action=list_chats",
       "expectedStatus": 401
     },
     {
-      "name": "send_message without auth",
+      "name": "get_messages — без авторизации",
+      "method": "GET",
+      "path": "/?action=get_messages&chatId=1",
+      "expectedStatus": 401
+    },
+    {
+      "name": "send_message — без авторизации",
       "method": "POST",
       "path": "/",
       "body": {"action": "send_message", "chatId": 1, "text": "test"},
       "expectedStatus": 401
     },
     {
-      "name": "delete_chat without auth",
+      "name": "send_photo — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "send_photo", "chatId": 1, "imageBase64": "abc"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "create_chat — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "create_chat", "name": "Тест"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "create_direct — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "create_direct", "targetUserId": 2},
+      "expectedStatus": 401
+    },
+    {
+      "name": "delete_chat — без авторизации",
       "method": "POST",
       "path": "/",
       "body": {"action": "delete_chat", "chatId": 1},
+      "expectedStatus": 401
+    },
+    {
+      "name": "get_users — без авторизации",
+      "method": "GET",
+      "path": "/?action=get_users",
+      "expectedStatus": 401
+    },
+    {
+      "name": "search_users — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "search_users", "query": "ан"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "add_family — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "add_family", "memberId": 2},
+      "expectedStatus": 401
+    },
+    {
+      "name": "remove_family — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "remove_family", "memberId": 2},
+      "expectedStatus": 401
+    },
+    {
+      "name": "unknown action",
+      "method": "GET",
+      "path": "/?action=does_not_exist",
       "expectedStatus": 401
     }
   ]
