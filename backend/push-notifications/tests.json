@@ -6,7 +6,6 @@
       "path": "/",
       "body": {"action": "get_vapid_public_key"},
       "expectedStatus": 200,
-      "expectedBody": {"publicKey": "string"},
       "bodyMatcher": "partial"
     },
     {

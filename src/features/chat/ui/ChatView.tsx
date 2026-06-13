@@ -3,6 +3,8 @@ import Icon from "@/shared/ui/icon";
 import Avatar from "@/shared/ui/Avatar";
 import { Chat, Message, getMessages, sendMessage, sendPhoto } from "@/shared/api";
 import ChatMessageBubble from "@/features/chat/ui/ChatMessageBubble";
+import { sendPushNotification } from "@/shared/lib/push";
+import { useAuth } from "@/shared/lib/AuthContext";
 
 function formatDateSep(dateStr: string): string {
   if (!dateStr) return "";
@@ -23,6 +25,7 @@ function formatDateSep(dateStr: string): string {
 type Props = { chat: Chat; onBack: () => void };
 
 export default function ChatView({ chat, onBack }: Props) {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -79,6 +82,7 @@ export default function ChatView({ chat, onBack }: Props) {
     try {
       const msg = await sendMessage(chat.id, text);
       addMessage(msg);
+      sendPushNotification(chat.id, user?.displayName || "Семейка", text);
     } catch {
       setInput(text);
     } finally {
@@ -111,6 +115,7 @@ export default function ChatView({ chat, onBack }: Props) {
         const base64 = dataUrl.split(",")[1];
         const msg = await sendPhoto(chat.id, base64, file.type);
         addMessage(msg);
+        sendPushNotification(chat.id, user?.displayName || "Семейка", "📷 Фото");
       } catch { /* silent */ }
       finally { setSending(false); }
     };

@@ -13,20 +13,19 @@ def cors():
     return {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, X-Authorization, X-User-Id, X-Auth-Token, X-Session-Id",
+        "Access-Control-Allow-Headers": "Content-Type, X-Session-Id",
     }
 
-def get_caller(event, conn):
+def get_caller(cur, event):
     headers = event.get("headers") or {}
-    token = headers.get("X-Auth-Token") or headers.get("x-auth-token")
-    user_id = headers.get("X-User-Id") or headers.get("x-user-id")
-    if not token or not user_id:
+    token = headers.get("X-Session-Id") or headers.get("x-session-id")
+    if not token:
         return None
-    cur = conn.cursor()
-    cur.execute(
-        f"SELECT id FROM {SCHEMA}.users WHERE id = %s AND auth_token = %s",
-        (int(user_id), token)
-    )
+    cur.execute(f"""
+        SELECT u.id FROM {SCHEMA}.sessions s
+        JOIN {SCHEMA}.users u ON u.id = s.user_id
+        WHERE s.token = %s AND s.expires_at > NOW()
+    """, (token,))
     row = cur.fetchone()
     return row[0] if row else None
 
@@ -41,23 +40,7 @@ def handler(event: dict, context) -> dict:
 
     action = body.get("action") or (event.get("queryStringParameters") or {}).get("action")
 
-    # Сгенерировать VAPID ключи (одноразовый вызов)
-    if action == "generate_vapid":
-        from py_vapid import Vapid
-        import base64
-        v = Vapid()
-        v.generate_keys()
-        priv_pem = v.private_pem().decode()
-        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-        pub_bytes = v.public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
-        pub_b64 = base64.urlsafe_b64encode(pub_bytes).rstrip(b"=").decode()
-        return {
-            "statusCode": 200,
-            "headers": cors(),
-            "body": json.dumps({"privateKey": priv_pem, "publicKey": pub_b64})
-        }
-
-    # Получить публичный VAPID ключ (открытый, доступен без авторизации)
+    # Получить публичный VAPID ключ (открытый, без авторизации)
     if action == "get_vapid_public_key":
         return {
             "statusCode": 200,
@@ -66,12 +49,12 @@ def handler(event: dict, context) -> dict:
         }
 
     conn = get_db()
-    caller_id = get_caller(event, conn)
+    cur = conn.cursor()
+    caller_id = get_caller(cur, event)
+
     if not caller_id:
         conn.close()
         return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
-
-    cur = conn.cursor()
 
     # Сохранить подписку
     if action == "subscribe":
@@ -91,50 +74,36 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
 
-    # Удалить подписку (при выходе)
-    if action == "unsubscribe":
-        endpoint = body.get("endpoint")
-        if endpoint:
-            cur.execute(
-                f"UPDATE {SCHEMA}.push_subscriptions SET endpoint = endpoint WHERE user_id = %s AND endpoint = %s",
-                (caller_id, endpoint)
-            )
-        conn.close()
-        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
-
-    # Отправить push всем получателям сообщения в чате
+    # Отправить push всем участникам чата (кроме отправителя)
     if action == "send_push":
         chat_id = body.get("chatId")
-        title = body.get("title", "Новое сообщение")
-        message = body.get("message", "")
-        sender_id = body.get("senderId") or caller_id
+        title = body.get("title", "Семейка")
+        message = body.get("message", "Новое сообщение")
 
         if not chat_id:
             conn.close()
             return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Нет chatId"})}
 
-        # Получаем подписки всех участников чата, кроме отправителя
         cur.execute(f"""
             SELECT ps.endpoint, ps.p256dh, ps.auth
             FROM {SCHEMA}.push_subscriptions ps
             JOIN {SCHEMA}.chat_members cm ON cm.user_id = ps.user_id
             WHERE cm.chat_id = %s AND ps.user_id != %s
-        """, (chat_id, sender_id))
+        """, (chat_id, caller_id))
 
         rows = cur.fetchall()
         conn.close()
 
         vapid_private = os.environ.get("VAPID_PRIVATE_KEY", "")
-        vapid_email = os.environ.get("VAPID_EMAIL", "mailto:app@semejka.app")
+        vapid_email = "mailto:support@semejka.app"
+        payload = json.dumps({"title": title, "body": message, "chatId": chat_id})
         sent = 0
         failed = 0
 
-        payload = json.dumps({"title": title, "body": message, "chatId": chat_id})
-
-        for endpoint, p256dh, auth in rows:
+        for endpoint, p256dh, auth_key in rows:
             try:
                 webpush(
-                    subscription_info={"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}},
+                    subscription_info={"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth_key}},
                     data=payload,
                     vapid_private_key=vapid_private,
                     vapid_claims={"sub": vapid_email},

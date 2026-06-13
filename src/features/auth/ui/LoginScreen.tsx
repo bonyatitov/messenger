@@ -2,6 +2,7 @@ import { useState } from "react";
 import Icon from "@/shared/ui/icon";
 import { login, LoginLockedError } from "@/shared/api";
 import { useAuth } from "@/shared/lib/AuthContext";
+import { subscribeToPush } from "@/shared/lib/push";
 
 export default function LoginScreen() {
   const { setUser } = useAuth();
@@ -23,6 +24,7 @@ export default function LoginScreen() {
     try {
       const user = await login(username.trim(), password);
       setUser(user);
+      subscribeToPush().catch(() => {});
     } catch (err: unknown) {
       if (err instanceof LoginLockedError) {
         setLocked(true);

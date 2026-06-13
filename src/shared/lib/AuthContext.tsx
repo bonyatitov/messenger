@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, getMe, logout as apiLogout } from "@/shared/api";
+import { registerServiceWorker, subscribeToPush } from "@/shared/lib/push";
 
 type AuthState = {
   user: User | null;
@@ -20,8 +21,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    registerServiceWorker();
     getMe()
-      .then((u) => setUser(u))
+      .then((u) => {
+        setUser(u);
+        if (u) subscribeToPush().catch(() => {});
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
