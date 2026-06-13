@@ -62,6 +62,19 @@ export async function subscribeToPush(): Promise<boolean> {
   return true;
 }
 
+export async function unsubscribeFromPush(): Promise<void> {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const subscription = await reg.pushManager.getSubscription();
+    if (!subscription) return;
+    await pushCall("unsubscribe", { endpoint: subscription.endpoint });
+    await subscription.unsubscribe();
+  } catch {
+    // silent
+  }
+}
+
 export async function sendPushNotification(chatId: number, title: string, message: string) {
   try {
     await pushCall("send_push", { chatId, title, message });

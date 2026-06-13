@@ -74,6 +74,18 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
 
+    # Удалить подписку при выходе из аккаунта
+    if action == "unsubscribe":
+        endpoint = body.get("endpoint")
+        if endpoint:
+            cur.execute(
+                f"DELETE FROM {SCHEMA}.push_subscriptions WHERE user_id = %s AND endpoint = %s",
+                (caller_id, endpoint)
+            )
+            conn.commit()
+        conn.close()
+        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
+
     # Отправить push всем участникам чата (кроме отправителя)
     if action == "send_push":
         chat_id = body.get("chatId")

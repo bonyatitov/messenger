@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, getMe, logout as apiLogout } from "@/shared/api";
-import { registerServiceWorker, subscribeToPush } from "@/shared/lib/push";
+import { registerServiceWorker, subscribeToPush, unsubscribeFromPush } from "@/shared/lib/push";
 
 type AuthState = {
   user: User | null;
@@ -32,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = async () => {
+    await unsubscribeFromPush();
     await apiLogout();
     setUser(null);
   };
