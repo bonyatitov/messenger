@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import Icon from "@/shared/ui/icon";
 import Avatar from "@/shared/ui/Avatar";
-import { User, listUsers, createUser, deleteUser, updateBadge } from "@/shared/api";
+import { User, listUsers, createUser, deleteUser, updateBadge, resetPasswordAdmin } from "@/shared/api";
 
 const BADGE_COLORS = [
   { label: "Синий",    bg: "hsl(210,90%,92%)", text: "hsl(210,90%,35%)" },
@@ -21,6 +21,7 @@ const ROLES = [
 ];
 
 type BadgeModal = { user: User; text: string; color: typeof BADGE_COLORS[0] };
+type ResetPassModal = { user: User; newPassword: string; saving: boolean };
 type Props = { onBack: () => void };
 
 export default function AdminPanel({ onBack }: Props) {
@@ -32,6 +33,7 @@ export default function AdminPanel({ onBack }: Props) {
   const [success, setSuccess] = useState("");
   const [badgeModal, setBadgeModal] = useState<BadgeModal | null>(null);
   const [savingBadge, setSavingBadge] = useState(false);
+  const [resetPassModal, setResetPassModal] = useState<ResetPassModal | null>(null);
 
   const [form, setForm] = useState({
     username: "", displayName: "", password: "", role: "member",
@@ -105,6 +107,24 @@ export default function AdminPanel({ onBack }: Props) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
       setSavingBadge(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPassModal) return;
+    const { user, newPassword } = resetPassModal;
+    if (!newPassword || newPassword.length < 4) {
+      setError("Пароль должен быть не короче 4 символов");
+      return;
+    }
+    setResetPassModal(m => m ? { ...m, saving: true } : null);
+    try {
+      await resetPasswordAdmin(user.id, newPassword);
+      setSuccess(`Пароль для «${user.displayName}» изменён`);
+      setResetPassModal(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Ошибка");
+      setResetPassModal(m => m ? { ...m, saving: false } : null);
     }
   };
 
@@ -251,6 +271,9 @@ export default function AdminPanel({ onBack }: Props) {
                 <button onClick={() => openBadgeModal(u)} className="p-2 rounded-xl hover:bg-muted transition-colors flex-shrink-0" title="Редактировать бейджик">
                   <Icon name="Tag" size={16} style={{ color: "hsl(210,70%,55%)" }} />
                 </button>
+                <button onClick={() => setResetPassModal({ user: u, newPassword: "", saving: false })} className="p-2 rounded-xl hover:bg-muted transition-colors flex-shrink-0" title="Сменить пароль">
+                  <Icon name="KeyRound" size={16} style={{ color: "hsl(40,80%,50%)" }} />
+                </button>
                 <button onClick={() => handleDelete(u)} className="p-2 rounded-xl hover:bg-red-50 transition-colors flex-shrink-0">
                   <Icon name="Trash2" size={16} style={{ color: "hsl(0,65%,60%)" }} />
                 </button>
@@ -334,6 +357,55 @@ export default function AdminPanel({ onBack }: Props) {
                 style={{ background: savingBadge ? "hsl(22,40%,75%)" : "hsl(22,85%,62%)", fontWeight: 700 }}
               >
                 {savingBadge ? "Сохраняем..." : "Сохранить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалка смены пароля */}
+      {resetPassModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setResetPassModal(null)}>
+          <div
+            className="w-full max-w-sm bg-white rounded-t-3xl px-5 pt-5 pb-8 animate-slide-up"
+            style={{ boxShadow: "0 -8px 32px rgba(0,0,0,0.12)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-base text-foreground" style={{ fontWeight: 700 }}>Сменить пароль</p>
+                <p className="text-xs text-muted-foreground">{resetPassModal.user.displayName}</p>
+              </div>
+              <button onClick={() => setResetPassModal(null)}>
+                <Icon name="X" size={18} style={{ color: "hsl(25,15%,60%)" }} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground mb-1.5" style={{ fontWeight: 600 }}>Новый пароль</p>
+            <input
+              type="text"
+              value={resetPassModal.newPassword}
+              onChange={e => setResetPassModal(m => m ? { ...m, newPassword: e.target.value } : null)}
+              placeholder="Минимум 4 символа"
+              className="w-full bg-muted rounded-2xl px-4 py-3 text-sm outline-none mb-4"
+              autoFocus
+            />
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setResetPassModal(null)}
+                className="flex-1 py-2.5 rounded-2xl text-sm transition-all"
+                style={{ background: "hsl(35,30%,92%)", color: "hsl(25,20%,45%)", fontWeight: 600 }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleResetPassword}
+                disabled={resetPassModal.saving}
+                className="flex-1 py-2.5 rounded-2xl text-white text-sm transition-all"
+                style={{ background: resetPassModal.saving ? "hsl(22,40%,75%)" : "hsl(22,85%,62%)", fontWeight: 700 }}
+              >
+                {resetPassModal.saving ? "Сохраняем..." : "Сохранить"}
               </button>
             </div>
           </div>

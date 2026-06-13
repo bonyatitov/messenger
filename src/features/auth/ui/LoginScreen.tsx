@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Icon from "@/shared/ui/icon";
-import { login } from "@/shared/api";
+import { login, LoginLockedError } from "@/shared/api";
 import { useAuth } from "@/shared/lib/AuthContext";
 
 export default function LoginScreen() {
@@ -10,6 +10,7 @@ export default function LoginScreen() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [locked, setLocked] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +24,9 @@ export default function LoginScreen() {
       const user = await login(username.trim(), password);
       setUser(user);
     } catch (err: unknown) {
+      if (err instanceof LoginLockedError) {
+        setLocked(true);
+      }
       setError(err instanceof Error ? err.message : "Ошибка входа");
     } finally {
       setLoading(false);
@@ -122,7 +126,20 @@ export default function LoginScreen() {
             </div>
           </div>
 
-          {error && (
+          {locked ? (
+            <div
+              className="flex flex-col gap-1.5 px-4 py-3.5 rounded-2xl animate-fade-in"
+              style={{ background: "hsl(0,70%,95%)" }}
+            >
+              <div className="flex items-center gap-2">
+                <Icon name="LockKeyhole" size={16} style={{ color: "hsl(0,65%,55%)" }} />
+                <span className="text-sm" style={{ color: "hsl(0,65%,40%)", fontWeight: 700 }}>Доступ заблокирован</span>
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: "hsl(0,55%,48%)" }}>
+                Превышено количество попыток входа. Пожалуйста, свяжитесь с администратором для восстановления доступа.
+              </p>
+            </div>
+          ) : error ? (
             <div
               className="flex items-center gap-2 px-4 py-3 rounded-2xl animate-fade-in"
               style={{ background: "hsl(0,70%,95%)" }}
@@ -130,14 +147,14 @@ export default function LoginScreen() {
               <Icon name="AlertCircle" size={16} style={{ color: "hsl(0,65%,55%)" }} />
               <span className="text-sm" style={{ color: "hsl(0,65%,45%)", fontWeight: 600 }}>{error}</span>
             </div>
-          )}
+          ) : null}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || locked}
             className="w-full py-4 rounded-2xl text-white text-base transition-all duration-200 active:scale-98 mt-2"
             style={{
-              background: loading
+              background: (loading || locked)
                 ? "hsl(22,40%,75%)"
                 : "linear-gradient(135deg, hsl(22,85%,62%) 0%, hsl(340,60%,68%) 100%)",
               fontWeight: 700,

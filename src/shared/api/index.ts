@@ -96,11 +96,24 @@ async function msgCall(method: string, action: string, body?: object) {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+export class LoginLockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LoginLockedError";
+  }
+}
+
 export async function login(username: string, password: string) {
   const { status, data } = await call("POST", "login", { username, password });
+  if (status === 423 || data?.locked) throw new LoginLockedError((data?.error as string) || "Доступ заблокирован");
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка входа");
   localStorage.setItem("fc_session", data.token as string);
   return data.user as User;
+}
+
+export async function resetPasswordAdmin(userId: number, newPassword: string): Promise<void> {
+  const { status, data } = await call("POST", "reset_password_admin", { userId, newPassword });
+  if (status !== 200) throw new Error((data?.error as string) || "Ошибка сброса пароля");
 }
 
 export async function getMe(): Promise<User | null> {

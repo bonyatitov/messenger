@@ -10,9 +10,28 @@ from datetime import datetime, timedelta
 
 SCHEMA = "t_p3482084_react_native_family_"
 SESSION_DURATION_DAYS = 30
+MAX_LOGIN_ATTEMPTS = 3
+LOCKOUT_MINUTES = 30
 
 def get_db():
     return psycopg2.connect(os.environ["DATABASE_URL"])
+
+def is_locked_out(cur, username: str) -> bool:
+    since = datetime.utcnow() - timedelta(minutes=LOCKOUT_MINUTES)
+    cur.execute(f"""
+        SELECT COUNT(*) FROM {SCHEMA}.login_attempts
+        WHERE username = %s AND attempted_at > %s
+    """, (username.lower(), since))
+    count = cur.fetchone()[0]
+    return count >= MAX_LOGIN_ATTEMPTS
+
+def record_attempt(cur, username: str, ip: str):
+    cur.execute(f"""
+        INSERT INTO {SCHEMA}.login_attempts (username, ip) VALUES (%s, %s)
+    """, (username.lower(), ip))
+
+def clear_attempts(cur, username: str):
+    cur.execute(f"DELETE FROM {SCHEMA}.login_attempts WHERE username = %s", (username.lower(),))
 
 def hash_password(password: str) -> str:
     salt = hashlib.sha256(b"familychat_salt_2024").hexdigest()[:16]
@@ -74,18 +93,43 @@ def handler(event: dict, context) -> dict:
         if not username or not password:
             return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Укажите логин и пароль"})}
 
+        ip = (event.get("requestContext") or {}).get("identity", {}).get("sourceIp", "") or ""
         conn = get_db()
         cur = conn.cursor()
+
+        if is_locked_out(cur, username):
+            conn.close()
+            return {"statusCode": 423, "headers": cors(), "body": json.dumps({
+                "error": "Превышено количество попыток входа. Пожалуйста, свяжитесь с администратором для восстановления доступа.",
+                "locked": True
+            })}
+
         cur.execute(
             f"SELECT id, username, display_name, role, avatar, bio, city, age, password_hash FROM {SCHEMA}.users WHERE LOWER(username) = %s",
             (username,)
         )
         row = cur.fetchone()
         if not row or not check_password(password, row[8]):
+            record_attempt(cur, username, ip)
+            conn.commit()
+            # Считаем сколько попыток осталось
+            since = datetime.utcnow() - timedelta(minutes=LOCKOUT_MINUTES)
+            cur.execute(f"SELECT COUNT(*) FROM {SCHEMA}.login_attempts WHERE username = %s AND attempted_at > %s", (username, since))
+            attempts = cur.fetchone()[0]
+            remaining = max(0, MAX_LOGIN_ATTEMPTS - attempts)
             conn.close()
-            return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Неверный логин или пароль"})}
+            if remaining == 0:
+                return {"statusCode": 423, "headers": cors(), "body": json.dumps({
+                    "error": "Превышено количество попыток входа. Пожалуйста, свяжитесь с администратором для восстановления доступа.",
+                    "locked": True
+                })}
+            return {"statusCode": 401, "headers": cors(), "body": json.dumps({
+                "error": f"Неверный логин или пароль. Осталось попыток: {remaining}",
+                "attemptsLeft": remaining
+            })}
 
         user_id = row[0]
+        clear_attempts(cur, username)
         token = secrets.token_hex(32)
         expires = datetime.utcnow() + timedelta(days=SESSION_DURATION_DAYS)
         cur.execute(
@@ -305,6 +349,36 @@ def handler(event: dict, context) -> dict:
             f"UPDATE {SCHEMA}.users SET badge_text = %s, badge_color = %s WHERE id = %s",
             (badge_text or None, badge_color or None, target_id)
         )
+        conn.commit()
+        conn.close()
+        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
+
+    # reset_password_admin — сброс пароля любому пользователю (только admin)
+    if method == "POST" and action == "reset_password_admin":
+        if not session_token:
+            return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
+        conn = get_db()
+        cur = conn.cursor()
+        caller = get_user_by_session(cur, session_token)
+        if not caller or caller[3] != "admin":
+            conn.close()
+            return {"statusCode": 403, "headers": cors(), "body": json.dumps({"error": "Нет доступа"})}
+        target_id = body.get("userId")
+        new_password = (body.get("newPassword") or "").strip()
+        if not target_id or not new_password:
+            conn.close()
+            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Укажите userId и newPassword"})}
+        if len(new_password) < 4:
+            conn.close()
+            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Пароль должен быть не короче 4 символов"})}
+        cur.execute(f"SELECT username FROM {SCHEMA}.users WHERE id = %s", (target_id,))
+        target = cur.fetchone()
+        if not target:
+            conn.close()
+            return {"statusCode": 404, "headers": cors(), "body": json.dumps({"error": "Пользователь не найден"})}
+        cur.execute(f"UPDATE {SCHEMA}.users SET password_hash = %s WHERE id = %s", (hash_password(new_password), target_id))
+        clear_attempts(cur, target[0])
+        cur.execute(f"DELETE FROM {SCHEMA}.sessions WHERE user_id = %s", (target_id,))
         conn.commit()
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
