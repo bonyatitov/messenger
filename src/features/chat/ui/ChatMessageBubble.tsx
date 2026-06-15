@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import Icon from "@/shared/ui/icon";
 import { Message } from "@/shared/api";
+import { ProfileUser } from "@/shared/ui/UserProfileModal";
 
 type Props = {
   msg: Message;
@@ -8,13 +9,14 @@ type Props = {
   showName: boolean;
   onImageClick: (url: string) => void;
   onReply: (msg: Message) => void;
+  onUserClick?: (user: ProfileUser) => void;
 };
 
 function avatarIsUrl(av: string) {
   return av?.startsWith("http");
 }
 
-export default function ChatMessageBubble({ msg, showAvatar, showName, onImageClick, onReply }: Props) {
+export default function ChatMessageBubble({ msg, showAvatar, showName, onImageClick, onReply, onUserClick }: Props) {
   const hasImage = !!msg.imageUrl;
   const isTextOnly = !hasImage;
   const touchStartX = useRef<number>(0);
@@ -49,14 +51,15 @@ export default function ChatMessageBubble({ msg, showAvatar, showName, onImageCl
       onTouchEnd={handleTouchEnd}
     >
       {!msg.isMe && (
-        <div
+        <button
           className="w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0 mb-0.5 overflow-hidden"
           style={{ background: "hsl(35,45%,90%)", visibility: showAvatar ? "visible" : "hidden" }}
+          onClick={() => onUserClick?.({ id: msg.userId, displayName: msg.displayName, avatar: msg.avatar, role: "member" })}
         >
           {avatarIsUrl(msg.avatar)
             ? <img src={msg.avatar} className="w-full h-full object-cover" alt="" />
             : msg.avatar}
-        </div>
+        </button>
       )}
 
       {/* Кнопка ответа — слева от своего, справа от чужого (десктоп) */}

@@ -6,6 +6,7 @@ import ChatMessageBubble from "@/features/chat/ui/ChatMessageBubble";
 import { sendPushNotification } from "@/shared/lib/push";
 import { useAuth } from "@/shared/lib/AuthContext";
 import GroupInfoModal from "@/features/chat/ui/GroupInfoModal";
+import UserProfileModal, { ProfileUser } from "@/shared/ui/UserProfileModal";
 
 function formatDateSep(dateStr: string): string {
   if (!dateStr) return "";
@@ -34,6 +35,7 @@ export default function ChatView({ chat, onBack }: Props) {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [profileUser, setProfileUser] = useState<ProfileUser | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef<number>(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -199,6 +201,7 @@ export default function ChatView({ chat, onBack }: Props) {
                       setReplyTo({ msg: m, replyTo: { id: m.id, authorName: m.displayName, text: m.text, imageUrl: m.imageUrl } });
                       textareaRef.current?.focus();
                     }}
+                    onUserClick={setProfileUser}
                   />
                 </div>
               );
@@ -284,6 +287,12 @@ export default function ChatView({ chat, onBack }: Props) {
       )}
       {showGroupInfo && (
         <GroupInfoModal chatId={chat.id} chatName={chat.name} onClose={() => setShowGroupInfo(false)} />
+      )}
+      {profileUser && (
+        <UserProfileModal
+          user={profileUser}
+          onClose={() => setProfileUser(null)}
+        />
       )}
     </div>
   );

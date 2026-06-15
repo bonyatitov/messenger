@@ -3,6 +3,7 @@ import Icon from "@/shared/ui/icon";
 import Avatar from "@/shared/ui/Avatar";
 import { getChatUsers, createDirect, addFamilyMember, removeFamilyMember, searchUsers, FamilyUser } from "@/shared/api";
 import { useAuth } from "@/shared/lib/AuthContext";
+import UserProfileModal, { ProfileUser } from "@/shared/ui/UserProfileModal";
 
 function Badge({ text, color }: { text?: string; color?: string }) {
   if (!text) return null;
@@ -27,6 +28,14 @@ export default function FamilyScreen({ onOpenDirectChat }: Props) {
   const [loading, setLoading] = useState(true);
   const [writingTo, setWritingTo] = useState<number | null>(null);
   const [toggling, setToggling] = useState<number | null>(null);
+  const [profileUser, setProfileUser] = useState<ProfileUser | null>(null);
+
+  const toProfileUser = (m: FamilyUser): ProfileUser => ({
+    id: m.id, displayName: m.displayName, avatar: m.avatar,
+    role: m.role, onlineStatus: m.onlineStatus,
+    badgeText: m.badgeText, badgeColor: m.badgeColor,
+    age: m.age, city: m.city,
+  });
 
   // Поиск
   const [showSearch, setShowSearch] = useState(false);
@@ -246,14 +255,16 @@ export default function FamilyScreen({ onOpenDirectChat }: Props) {
                     className={`bg-white rounded-3xl p-4 flex items-center gap-4 animate-slide-up stagger-${Math.min(i + 2, 6)}`}
                     style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}
                   >
-                    <Avatar
-                      avatar={m.avatar}
-                      size={56}
-                      className="rounded-2xl"
-                      style={{ background: bgColors[i % bgColors.length] }}
-                      onlineStatus={m.onlineStatus}
-                    />
-                    <div className="flex-1 min-w-0">
+                    <button className="flex-shrink-0" onClick={() => setProfileUser(toProfileUser(m))}>
+                      <Avatar
+                        avatar={m.avatar}
+                        size={56}
+                        className="rounded-2xl"
+                        style={{ background: bgColors[i % bgColors.length] }}
+                        onlineStatus={m.onlineStatus}
+                      />
+                    </button>
+                    <button className="flex-1 min-w-0 text-left" onClick={() => setProfileUser(toProfileUser(m))}>
                       <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                         <p className="text-foreground text-[15px]" style={{ fontWeight: 700 }}>{m.displayName}</p>
                         {m.role === "admin" && (
@@ -267,7 +278,7 @@ export default function FamilyScreen({ onOpenDirectChat }: Props) {
                           ? <p className="text-xs" style={{ color: "hsl(142,70%,40%)", fontWeight: 600 }}>в сети</p>
                           : m.city && <p className="text-xs text-muted-foreground" style={{ fontWeight: 600 }}>{m.city}</p>
                       }
-                    </div>
+                    </button>
 
                     <div className="flex items-center gap-1 flex-shrink-0">
                       {m.inFamily && (
@@ -302,6 +313,18 @@ export default function FamilyScreen({ onOpenDirectChat }: Props) {
           </>
         )}
       </div>
+
+      {profileUser && (
+        <UserProfileModal
+          user={profileUser}
+          onClose={() => setProfileUser(null)}
+          onWriteMessage={() => {
+            const id = profileUser.id;
+            setProfileUser(null);
+            handleWrite(id);
+          }}
+        />
+      )}
     </div>
   );
 }

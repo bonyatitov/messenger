@@ -237,6 +237,7 @@ export type FamilyUser = {
   displayName: string;
   avatar: string;
   city: string;
+  age?: number | null;
   onlineStatus?: string | null;
   role: string;
   inFamily: boolean;
