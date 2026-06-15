@@ -53,8 +53,19 @@ export default function ChatMessageBubble({ msg, showAvatar, showName, onImageCl
       {!msg.isMe && (
         <button
           className="w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0 mb-0.5 overflow-hidden"
-          style={{ background: "hsl(35,45%,90%)", visibility: showAvatar ? "visible" : "hidden" }}
-          onClick={() => onUserClick?.({ id: msg.userId, displayName: msg.displayName, avatar: msg.avatar, role: "member" })}
+          style={{
+            background: "hsl(35,45%,90%)",
+            visibility: showAvatar ? "visible" : "hidden",
+            pointerEvents: showAvatar ? "auto" : "none",
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onUserClick?.({ id: msg.userId, displayName: msg.displayName, avatar: msg.avatar, role: "member" });
+          }}
+          onTouchEnd={(e) => {
+            e.stopPropagation();
+            onUserClick?.({ id: msg.userId, displayName: msg.displayName, avatar: msg.avatar, role: "member" });
+          }}
         >
           {avatarIsUrl(msg.avatar)
             ? <img src={msg.avatar} className="w-full h-full object-cover" alt="" />
@@ -75,9 +86,16 @@ export default function ChatMessageBubble({ msg, showAvatar, showName, onImageCl
 
       <div className="max-w-[72%]">
         {showName && (
-          <p className="text-[10px] mb-1 ml-1" style={{ color: "hsl(22,85%,55%)", fontWeight: 700 }}>
+          <button
+            className="text-[10px] mb-1 ml-1 text-left"
+            style={{ color: "hsl(22,85%,55%)", fontWeight: 700 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onUserClick?.({ id: msg.userId, displayName: msg.displayName, avatar: msg.avatar, role: "member" });
+            }}
+          >
             {msg.displayName}
-          </p>
+          </button>
         )}
 
         {hasImage ? (

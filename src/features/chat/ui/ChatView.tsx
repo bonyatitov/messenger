@@ -139,13 +139,31 @@ export default function ChatView({ chat, onBack }: Props) {
         <button onClick={onBack} className="p-1.5 rounded-full hover:bg-muted transition-colors">
           <Icon name="ArrowLeft" size={20} style={{ color: "hsl(22,85%,58%)" }} />
         </button>
-        <Avatar
-          avatar={chat.avatar}
-          size={40}
-          className="rounded-full"
-          style={{ background: "hsl(35,45%,90%)" }}
-          onlineStatus={!chat.isGroup ? chat.onlineStatus : null}
-        />
+        <button
+          className="flex-shrink-0"
+          disabled={chat.isGroup}
+          onClick={() => {
+            if (!chat.isGroup) {
+              const other = messages.find(m => !m.isMe);
+              setProfileUser({
+                id: other?.userId ?? 0,
+                displayName: chat.name,
+                avatar: chat.avatar,
+                role: "member",
+                onlineStatus: chat.onlineStatus,
+              });
+            }
+          }}
+          style={{ cursor: chat.isGroup ? "default" : "pointer" }}
+        >
+          <Avatar
+            avatar={chat.avatar}
+            size={40}
+            className="rounded-full"
+            style={{ background: "hsl(35,45%,90%)" }}
+            onlineStatus={!chat.isGroup ? chat.onlineStatus : null}
+          />
+        </button>
         <div className="flex-1 min-w-0">
           <p className="text-foreground truncate text-[15px]" style={{ fontWeight: 700 }}>{chat.name}</p>
           <p className="text-xs" style={{ fontWeight: 500,

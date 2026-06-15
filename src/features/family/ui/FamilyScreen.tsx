@@ -170,21 +170,23 @@ export default function FamilyScreen({ onOpenDirectChat }: Props) {
               className="bg-white rounded-3xl p-4 flex items-center gap-4"
               style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}
             >
-              <Avatar
-                avatar={m.avatar}
-                size={52}
-                className="rounded-2xl"
-                style={{ background: bgColors[i % bgColors.length] }}
-                onlineStatus={m.onlineStatus}
-              />
-              <div className="flex-1 min-w-0">
+              <button className="flex-shrink-0" onClick={() => setProfileUser(toProfileUser(m))}>
+                <Avatar
+                  avatar={m.avatar}
+                  size={52}
+                  className="rounded-2xl"
+                  style={{ background: bgColors[i % bgColors.length] }}
+                  onlineStatus={m.onlineStatus}
+                />
+              </button>
+              <button className="flex-1 min-w-0 text-left" onClick={() => setProfileUser(toProfileUser(m))}>
                 <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                   <p className="text-foreground text-[15px]" style={{ fontWeight: 700 }}>{m.displayName}</p>
                   {m.role === "admin" && <Icon name="ShieldCheck" size={13} style={{ color: "hsl(210,90%,50%)", flexShrink: 0 }} />}
                   <Badge text={m.badgeText} color={m.badgeColor} />
                 </div>
                 {m.city && <p className="text-xs text-muted-foreground" style={{ fontWeight: 500 }}>{m.city}</p>}
-              </div>
+              </button>
               <button
                 onClick={() => handleToggleFamily(m, true)}
                 disabled={toggling === m.id}
