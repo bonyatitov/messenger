@@ -382,4 +382,41 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
 
+    # update_profile — редактирование имени и возраста (любой авторизованный)
+    if method == "POST" and action == "update_profile":
+        if not session_token:
+            return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Не авторизован"})}
+        conn = get_db()
+        cur = conn.cursor()
+        caller = get_user_by_session(cur, session_token)
+        if not caller:
+            conn.close()
+            return {"statusCode": 401, "headers": cors(), "body": json.dumps({"error": "Сессия истекла"})}
+
+        display_name = (body.get("displayName") or "").strip()
+        age = body.get("age")
+
+        if not display_name:
+            conn.close()
+            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Имя не может быть пустым"})}
+        if len(display_name) > 64:
+            conn.close()
+            return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Имя слишком длинное"})}
+        if age is not None:
+            try:
+                age = int(age)
+                if age < 1 or age > 120:
+                    raise ValueError
+            except (ValueError, TypeError):
+                conn.close()
+                return {"statusCode": 400, "headers": cors(), "body": json.dumps({"error": "Некорректный возраст"})}
+
+        cur.execute(
+            f"UPDATE {SCHEMA}.users SET display_name = %s, age = %s WHERE id = %s",
+            (display_name, age, caller[0])
+        )
+        conn.commit()
+        conn.close()
+        return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True, "displayName": display_name, "age": age})}
+
     return {"statusCode": 404, "headers": cors(), "body": json.dumps({"error": "Unknown action"})}

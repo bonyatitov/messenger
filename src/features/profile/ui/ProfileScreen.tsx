@@ -4,6 +4,7 @@ import { useAuth } from "@/shared/lib/AuthContext";
 import AdminPanel from "@/features/auth/ui/AdminPanel";
 import ChangePasswordModal from "@/features/auth/ui/ChangePasswordModal";
 import ChangeAvatarModal from "@/features/auth/ui/ChangeAvatarModal";
+import EditProfileModal from "@/features/auth/ui/EditProfileModal";
 import { subscribeToPush } from "@/shared/lib/push";
 
 const settings = [
@@ -25,6 +26,7 @@ export default function ProfileScreen() {
   useEffect(() => { setNotifStatus(getNotifStatus()); }, []);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeAvatar, setShowChangeAvatar] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
 
   if (showAdmin) return <AdminPanel onBack={() => setShowAdmin(false)} />;
 
@@ -64,7 +66,15 @@ export default function ProfileScreen() {
                 </button>
               </div>
               <div className="flex-1">
-                <p className="text-white text-xl" style={{ fontWeight: 800 }}>{user?.displayName || "Гость"}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-white text-xl" style={{ fontWeight: 800 }}>{user?.displayName || "Гость"}</p>
+                  <button
+                    onClick={() => setShowEditProfile(true)}
+                    className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/35 transition-colors"
+                  >
+                    <Icon name="Pencil" size={12} style={{ color: "white" }} />
+                  </button>
+                </div>
                 <p className="text-white/80 text-sm mt-0.5">@{user?.username || "—"}</p>
                 <p className="text-white/70 text-xs mt-1">
                   {[user?.city, user?.age ? `${user.age} лет` : null].filter(Boolean).join(" · ") || "—"}
@@ -194,6 +204,7 @@ export default function ProfileScreen() {
 
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       {showChangeAvatar && <ChangeAvatarModal onClose={() => setShowChangeAvatar(false)} />}
+      {showEditProfile && <EditProfileModal onClose={() => setShowEditProfile(false)} />}
     </div>
   );
 }

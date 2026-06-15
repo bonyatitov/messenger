@@ -174,6 +174,12 @@ export async function changePassword(oldPassword: string, newPassword: string) {
   return data;
 }
 
+export async function updateProfile(payload: { displayName: string; age?: number | null }): Promise<{ displayName: string; age: number | null }> {
+  const { status, data } = await call("POST", "update_profile", payload);
+  if (status !== 200) throw new Error((data?.error as string) || "Ошибка обновления профиля");
+  return data as { displayName: string; age: number | null };
+}
+
 export async function updateAvatar(payload: { emoji?: string; imageBase64?: string; imageType?: string }): Promise<string> {
   const { status, data } = await call("POST", "update_avatar", payload);
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка обновления аватара");
