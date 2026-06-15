@@ -482,6 +482,30 @@ def handler(event: dict, context) -> dict:
         } for r in rows]
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"users": users})}
 
+    # get_user_profile — полный профиль пользователя по id
+    if action == "get_user_profile":
+        target_id = int(body.get("userId") or (event.get("queryStringParameters") or {}).get("userId") or 0)
+        if not target_id:
+            conn.close()
+            return {"statusCode": 400, "headers": _CORS, "body": json.dumps({"error": "userId required"})}
+        now = datetime.utcnow()
+        cur.execute(f"""
+            SELECT u.id, u.display_name, u.avatar, u.city, u.age, u.last_seen, u.role,
+                u.badge_text, u.badge_color
+            FROM {SCHEMA}.users u WHERE u.id = %s
+        """, (target_id,))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return {"statusCode": 404, "headers": _CORS, "body": json.dumps({"error": "Пользователь не найден"})}
+        return {"statusCode": 200, "headers": _CORS, "body": json.dumps({"user": {
+            "id": row[0], "displayName": row[1], "avatar": row[2] or "👤",
+            "city": row[3] or "", "age": row[4],
+            "onlineStatus": format_online(row[5], now),
+            "role": row[6] or "member",
+            "badgeText": row[7] or "", "badgeColor": row[8] or "",
+        }})}
+
     # add_family
     if action == "add_family":
         member_id = int(body.get("memberId", 0))

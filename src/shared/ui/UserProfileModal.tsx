@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Icon from "@/shared/ui/icon";
+import { getUserProfile } from "@/shared/api";
 
 export type ProfileUser = {
   id: number;
@@ -23,8 +24,19 @@ function avatarIsUrl(av: string) {
   return av?.startsWith("http");
 }
 
-export default function UserProfileModal({ user, onClose, onWriteMessage }: Props) {
+export default function UserProfileModal({ user: initialUser, onClose, onWriteMessage }: Props) {
   const [avatarExpanded, setAvatarExpanded] = useState(false);
+  const [user, setUser] = useState<ProfileUser>(initialUser);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!initialUser.id) return;
+    setLoading(true);
+    getUserProfile(initialUser.id)
+      .then((full) => { if (full) setUser({ ...initialUser, ...full }); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [initialUser.id]);
 
   const isOnline = user.onlineStatus === "online";
 
@@ -50,10 +62,7 @@ export default function UserProfileModal({ user, onClose, onWriteMessage }: Prop
 
           {/* Аватарка + основные данные */}
           <div className="px-4 pb-4 flex items-start gap-4">
-            <button
-              onClick={() => setAvatarExpanded(true)}
-              className="flex-shrink-0 relative"
-            >
+            <button onClick={() => setAvatarExpanded(true)} className="flex-shrink-0 relative">
               <div
                 className="w-20 h-20 rounded-2xl flex items-center justify-center overflow-hidden"
                 style={{
@@ -66,7 +75,6 @@ export default function UserProfileModal({ user, onClose, onWriteMessage }: Prop
                   ? <img src={user.avatar} alt="" className="w-full h-full object-cover" />
                   : (user.avatar || "👤")}
               </div>
-              {/* Индикатор online */}
               {isOnline && (
                 <span
                   className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white"
@@ -87,12 +95,19 @@ export default function UserProfileModal({ user, onClose, onWriteMessage }: Prop
               </p>
 
               {/* Статус */}
-              <p className="text-sm mt-0.5" style={{
-                color: isOnline ? "hsl(142,70%,40%)" : "hsl(25,15%,58%)",
-                fontWeight: isOnline ? 600 : 400,
-              }}>
-                {isOnline ? "В сети" : user.onlineStatus || "не в сети"}
-              </p>
+              {loading ? (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Icon name="Loader2" size={13} className="animate-spin" style={{ color: "hsl(25,15%,65%)" }} />
+                  <span className="text-xs text-muted-foreground">Загрузка...</span>
+                </div>
+              ) : (
+                <p className="text-sm mt-0.5" style={{
+                  color: isOnline ? "hsl(142,70%,40%)" : "hsl(25,15%,58%)",
+                  fontWeight: isOnline ? 600 : 400,
+                }}>
+                  {isOnline ? "В сети" : user.onlineStatus || "не в сети"}
+                </p>
+              )}
 
               {/* Роль + бейдж */}
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -117,9 +132,9 @@ export default function UserProfileModal({ user, onClose, onWriteMessage }: Prop
             </div>
           </div>
 
-          {/* Детали */}
-          <div className="px-4 pb-2 space-y-2">
-            {(user.city || user.age) && (
+          {/* Детали: город и возраст */}
+          {!loading && (user.city || user.age) && (
+            <div className="px-4 pb-2">
               <div className="rounded-2xl px-4 py-3 flex gap-4" style={{ background: "hsl(35,30%,96%)" }}>
                 {user.city && (
                   <div className="flex items-center gap-2">
@@ -134,11 +149,11 @@ export default function UserProfileModal({ user, onClose, onWriteMessage }: Prop
                   </div>
                 )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Кнопка написать */}
-          {onWriteMessage && (
+          {onWriteMessage ? (
             <div className="px-4 pb-6 pt-2">
               <button
                 onClick={() => { onClose(); onWriteMessage(); }}
@@ -153,8 +168,9 @@ export default function UserProfileModal({ user, onClose, onWriteMessage }: Prop
                 Написать сообщение
               </button>
             </div>
+          ) : (
+            <div className="h-6" />
           )}
-          {!onWriteMessage && <div className="h-6" />}
         </div>
       </div>
 

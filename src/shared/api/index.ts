@@ -263,6 +263,12 @@ export async function searchUsers(query: string): Promise<FamilyUser[]> {
   return (data.users as FamilyUser[]) || [];
 }
 
+export async function getUserProfile(userId: number): Promise<FamilyUser | null> {
+  const { status, data } = await msgCall("GET", "get_user_profile", { userId: String(userId) });
+  if (status !== 200) return null;
+  return data.user as FamilyUser;
+}
+
 export type ChatMember = {
   id: number;
   displayName: string;
