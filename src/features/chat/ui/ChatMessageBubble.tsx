@@ -2,6 +2,7 @@ import { useRef } from "react";
 import Icon from "@/shared/ui/icon";
 import { Message } from "@/shared/api";
 import { ProfileUser } from "@/shared/ui/UserProfileModal";
+import DocumentBubble from "@/features/chat/ui/DocumentBubble";
 
 type Props = {
   msg: Message;
@@ -18,7 +19,8 @@ function avatarIsUrl(av: string) {
 
 export default function ChatMessageBubble({ msg, showAvatar, showName, onImageClick, onReply, onUserClick }: Props) {
   const hasImage = !!msg.imageUrl;
-  const isTextOnly = !hasImage;
+  const hasDocument = !!msg.document;
+  const isTextOnly = !hasImage && !hasDocument;
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
   const swiping = useRef(false);
@@ -123,6 +125,16 @@ export default function ChatMessageBubble({ msg, showAvatar, showName, onImageCl
               </span>
               {msg.isMe && <Icon name="CheckCheck" size={12} style={{ color: "rgba(255,255,255,0.8)" }} />}
             </div>
+          </div>
+        ) : hasDocument ? (
+          <div className={msg.isMe ? "bubble-me" : "bubble-them"} style={{ padding: "8px 10px" }}>
+            {msg.replyTo && <ReplyBadge replyTo={msg.replyTo} isMe={msg.isMe} />}
+            <DocumentBubble doc={msg.document!} isMe={msg.isMe} />
+            <p className="text-[10px] mt-1.5 text-right flex items-center justify-end gap-1"
+              style={{ color: msg.isMe ? "rgba(255,255,255,0.7)" : "hsl(25,15%,60%)" }}>
+              {msg.time}
+              {msg.isMe && <Icon name="CheckCheck" size={12} style={{ color: "rgba(255,255,255,0.8)" }} />}
+            </p>
           </div>
         ) : (
           <div className={msg.isMe ? "bubble-me" : "bubble-them"} style={{ padding: "8px 14px" }}>

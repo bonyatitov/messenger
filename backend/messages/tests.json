@@ -102,6 +102,19 @@
       "expectedStatus": 401
     },
     {
+      "name": "send_document — без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "send_document", "chatId": 1, "fileBase64": "abc", "fileName": "test.pdf"},
+      "expectedStatus": 401
+    },
+    {
+      "name": "get_documents — без авторизации",
+      "method": "GET",
+      "path": "/?action=get_documents&chatId=1",
+      "expectedStatus": 401
+    },
+    {
       "name": "unknown action",
       "method": "GET",
       "path": "/?action=does_not_exist",

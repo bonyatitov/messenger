@@ -597,5 +597,107 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"ok": True})}
 
+    # send_document — загрузка документа (pdf, xlsx, docx) в S3 и отправка в чат
+    if action == "send_document":
+        chat_id = int(body.get("chatId") or 0)
+        file_b64 = body.get("fileBase64") or ""
+        file_name = (body.get("fileName") or "document").strip()
+        file_type = (body.get("fileType") or "application/octet-stream").strip()
+        file_size = int(body.get("fileSize") or 0)
+        if not chat_id or not file_b64:
+            conn.close()
+            return {"statusCode": 400, "headers": _CORS, "body": json.dumps({"error": "chatId и fileBase64 обязательны"})}
+        # Проверяем доступ к чату
+        cur.execute(f"SELECT 1 FROM {SCHEMA}.chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, caller_id))
+        if not cur.fetchone():
+            conn.close()
+            return {"statusCode": 403, "headers": _CORS, "body": json.dumps({"error": "Нет доступа к чату"})}
+        # Чистим просроченные документы при каждом вызове
+        cur.execute(f"SELECT s3_key FROM {SCHEMA}.chat_documents WHERE expires_at < NOW()")
+        expired_keys = [r[0] for r in cur.fetchall()]
+        if expired_keys:
+            try:
+                s3 = boto3.client("s3", endpoint_url="https://bucket.poehali.dev",
+                    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"])
+                for key in expired_keys:
+                    try:
+                        s3.delete_object(Bucket="files", Key=key)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            cur.execute(f"DELETE FROM {SCHEMA}.chat_documents WHERE expires_at < NOW()")
+        # Загружаем файл в S3
+        file_data = base64.b64decode(file_b64)
+        ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else "bin"
+        s3_key = f"documents/{chat_id}/{secrets.token_hex(8)}.{ext}"
+        s3 = boto3.client("s3", endpoint_url="https://bucket.poehali.dev",
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"])
+        s3.put_object(Bucket="files", Key=s3_key, Body=file_data, ContentType=file_type,
+                      ContentDisposition=f'attachment; filename="{file_name}"')
+        cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{s3_key}"
+        now_dt = datetime.utcnow()
+        # Сохраняем сообщение в чате
+        msg_text = f"📎 {file_name}"
+        cur.execute(f"""
+            INSERT INTO {SCHEMA}.messages (chat_id, user_id, text, created_at)
+            VALUES (%s, %s, %s, NOW() AT TIME ZONE 'Europe/Moscow')
+            RETURNING id
+        """, (chat_id, caller_id, msg_text))
+        msg_id = cur.fetchone()[0]
+        # Сохраняем запись документа
+        cur.execute(f"""
+            INSERT INTO {SCHEMA}.chat_documents (chat_id, message_id, user_id, file_name, file_size, file_type, s3_key, cdn_url, expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW() + INTERVAL '24 hours')
+            RETURNING id, expires_at
+        """, (chat_id, msg_id, caller_id, file_name, file_size, file_type, s3_key, cdn_url))
+        doc_row = cur.fetchone()
+        doc_id, expires_at = doc_row[0], doc_row[1]
+        # Обновляем last_message в чате
+        cur.execute(f"UPDATE {SCHEMA}.chats SET last_message_at = NOW() WHERE id = %s", (chat_id,))
+        conn.commit()
+        conn.close()
+        return {"statusCode": 200, "headers": _CORS, "body": json.dumps({
+            "message": {
+                "id": msg_id, "text": msg_text,
+                "time": datetime.now().strftime("%H:%M"),
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "userId": caller_id, "displayName": caller[2],
+                "avatar": caller[4] if len(caller) > 4 else "👤",
+                "isMe": True, "imageUrl": None, "replyTo": None,
+                "document": {
+                    "id": doc_id, "fileName": file_name, "fileSize": file_size,
+                    "fileType": file_type, "url": cdn_url,
+                    "expiresAt": expires_at.isoformat() if expires_at else None,
+                }
+            }
+        })}
+
+    # get_documents — получить документы чата
+    if action == "get_documents":
+        chat_id = int((event.get("queryStringParameters") or {}).get("chatId") or 0)
+        if not chat_id:
+            conn.close()
+            return {"statusCode": 400, "headers": _CORS, "body": json.dumps({"error": "chatId required"})}
+        cur.execute(f"SELECT 1 FROM {SCHEMA}.chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, caller_id))
+        if not cur.fetchone():
+            conn.close()
+            return {"statusCode": 403, "headers": _CORS, "body": json.dumps({"error": "Нет доступа"})}
+        cur.execute(f"""
+            SELECT d.id, d.message_id, d.file_name, d.file_size, d.file_type, d.cdn_url, d.expires_at
+            FROM {SCHEMA}.chat_documents d
+            WHERE d.chat_id = %s AND d.expires_at > NOW()
+            ORDER BY d.created_at DESC
+        """, (chat_id,))
+        rows = cur.fetchall()
+        conn.close()
+        return {"statusCode": 200, "headers": _CORS, "body": json.dumps({"documents": [
+            {"id": r[0], "messageId": r[1], "fileName": r[2], "fileSize": r[3],
+             "fileType": r[4], "url": r[5], "expiresAt": r[6].isoformat() if r[6] else None}
+            for r in rows
+        ]})}
+
     conn.close()
     return {"statusCode": 404, "headers": cors(), "body": json.dumps({"error": "Unknown action"})}

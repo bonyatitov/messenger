@@ -20,6 +20,15 @@ export type ReplyTo = {
   imageUrl?: string | null;
 };
 
+export type DocumentAttachment = {
+  id: number;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  url: string;
+  expiresAt: string | null;
+};
+
 export type Message = {
   id: number;
   text: string;
@@ -31,6 +40,7 @@ export type Message = {
   avatar: string;
   isMe: boolean;
   replyTo?: ReplyTo | null;
+  document?: DocumentAttachment | null;
 };
 
 export type User = {
@@ -267,6 +277,18 @@ export async function getUserProfile(userId: number): Promise<FamilyUser | null>
   const { status, data } = await msgCall("GET", "get_user_profile", { userId: String(userId) });
   if (status !== 200) return null;
   return data.user as FamilyUser;
+}
+
+export async function sendDocument(
+  chatId: number,
+  fileBase64: string,
+  fileName: string,
+  fileType: string,
+  fileSize: number,
+): Promise<Message> {
+  const { status, data } = await msgCall("POST", "send_document", { chatId, fileBase64, fileName, fileType, fileSize });
+  if (status !== 200) throw new Error((data?.error as string) || "Ошибка отправки документа");
+  return data.message as Message;
 }
 
 export type ChatMember = {

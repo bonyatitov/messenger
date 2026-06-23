@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/shared/ui/icon";
 import Avatar from "@/shared/ui/Avatar";
-import { Chat, Message, ReplyTo, getMessages, sendMessage, sendPhoto } from "@/shared/api";
+import { Chat, Message, ReplyTo, getMessages, sendMessage, sendPhoto, sendDocument } from "@/shared/api";
 import ChatMessageBubble from "@/features/chat/ui/ChatMessageBubble";
 import { sendPushNotification } from "@/shared/lib/push";
 import { useAuth } from "@/shared/lib/AuthContext";
@@ -36,10 +36,12 @@ export default function ChatView({ chat, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [profileUser, setProfileUser] = useState<ProfileUser | null>(null);
+  const [docWarning, setDocWarning] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef<number>(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const docRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = (smooth = false) =>
@@ -125,6 +127,47 @@ export default function ChatView({ chat, onBack }: Props) {
         const msg = await sendPhoto(chat.id, base64, file.type, undefined, replyId);
         addMessage(msg);
         sendPushNotification(chat.id, user?.displayName || "Семейка", "📷 Фото");
+      } catch { /* silent */ }
+      finally { setSending(false); }
+    };
+    reader.onerror = () => setSending(false);
+    reader.readAsDataURL(file);
+  };
+
+  const ALLOWED_DOC_TYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
+  const MAX_DOC_SIZE = 20 * 1024 * 1024; // 20 МБ
+
+  const handleDocSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    if (!ALLOWED_DOC_TYPES.includes(file.type)) {
+      setDocWarning("Поддерживаются только PDF, Word и Excel файлы");
+      setTimeout(() => setDocWarning(null), 4000);
+      return;
+    }
+    if (file.size > MAX_DOC_SIZE) {
+      setDocWarning("Максимальный размер файла — 20 МБ");
+      setTimeout(() => setDocWarning(null), 4000);
+      return;
+    }
+    setSending(true);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const dataUrl = ev.target?.result as string;
+        const base64 = dataUrl.split(",")[1];
+        const msg = await sendDocument(chat.id, base64, file.name, file.type, file.size);
+        addMessage(msg);
+        sendPushNotification(chat.id, user?.displayName || "Семейка", `📎 ${file.name}`);
+        setDocWarning(`⏱ Документ «${file.name}» будет автоматически удалён через 24 часа`);
+        setTimeout(() => setDocWarning(null), 7000);
       } catch { /* silent */ }
       finally { setSending(false); }
     };
@@ -245,15 +288,35 @@ export default function ChatView({ chat, onBack }: Props) {
         </div>
       )}
 
+      {docWarning && (
+        <div
+          className="mx-3 mb-1 px-3 py-2 rounded-2xl text-xs flex items-start gap-2 animate-slide-up flex-shrink-0"
+          style={{ background: "hsl(35,80%,94%)", color: "hsl(22,70%,38%)", border: "1px solid hsl(35,60%,84%)" }}
+        >
+          <Icon name="Clock" size={13} style={{ color: "hsl(22,85%,55%)", flexShrink: 0, marginTop: 1 }} />
+          <span>{docWarning}</span>
+        </div>
+      )}
+
       <div className="bg-white border-t border-border px-3 py-3 flex items-end gap-2 flex-shrink-0">
         <button
           onClick={() => fileRef.current?.click()}
           disabled={sending}
           className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors hover:bg-muted"
+          title="Прикрепить фото"
         >
           <Icon name="ImagePlus" size={20} style={{ color: sending ? "hsl(35,25%,75%)" : "hsl(22,85%,58%)" }} />
         </button>
+        <button
+          onClick={() => docRef.current?.click()}
+          disabled={sending}
+          className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors hover:bg-muted"
+          title="Прикрепить документ (PDF, Word, Excel)"
+        >
+          <Icon name="Paperclip" size={19} style={{ color: sending ? "hsl(35,25%,75%)" : "hsl(22,85%,58%)" }} />
+        </button>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
+        <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={handleDocSelect} />
 
         <div className="flex-1 bg-muted rounded-2xl px-4 py-2.5 flex items-end gap-2">
           <textarea
