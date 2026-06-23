@@ -288,16 +288,6 @@ export default function ChatView({ chat, onBack }: Props) {
         </div>
       )}
 
-      {docWarning && (
-        <div
-          className="mx-3 mb-1 px-3 py-2 rounded-2xl text-xs flex items-start gap-2 animate-slide-up flex-shrink-0"
-          style={{ background: "hsl(35,80%,94%)", color: "hsl(22,70%,38%)", border: "1px solid hsl(35,60%,84%)" }}
-        >
-          <Icon name="Clock" size={13} style={{ color: "hsl(22,85%,55%)", flexShrink: 0, marginTop: 1 }} />
-          <span>{docWarning}</span>
-        </div>
-      )}
-
       <div className="bg-white border-t border-border px-3 py-3 flex items-end gap-2 flex-shrink-0">
         <button
           onClick={() => fileRef.current?.click()}
@@ -374,6 +364,26 @@ export default function ChatView({ chat, onBack }: Props) {
           user={profileUser}
           onClose={() => setProfileUser(null)}
         />
+      )}
+
+      {/* Toast-баннер об удалении документа */}
+      {docWarning && (
+        <div
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-start gap-2 px-4 py-3 rounded-2xl text-sm animate-slide-up"
+          style={{
+            background: "hsl(22,85%,58%)",
+            color: "white",
+            boxShadow: "0 8px 24px hsla(22,85%,40%,0.4)",
+            maxWidth: "calc(100% - 32px)",
+            width: "max-content",
+          }}
+        >
+          <Icon name="Clock" size={15} style={{ color: "rgba(255,255,255,0.9)", flexShrink: 0, marginTop: 1 }} />
+          <span style={{ fontWeight: 500, lineHeight: 1.4 }}>{docWarning}</span>
+          <button onClick={() => setDocWarning(null)} className="ml-2 flex-shrink-0 opacity-70 hover:opacity-100">
+            <Icon name="X" size={14} style={{ color: "white" }} />
+          </button>
+        </div>
       )}
     </div>
   );

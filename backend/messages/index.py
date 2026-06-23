@@ -189,29 +189,22 @@ def handler(event: dict, context) -> dict:
             return {"statusCode": 403, "headers": cors(), "body": json.dumps({"error": "Нет доступа к чату"})}
 
         since = body.get("since") or (event.get("queryStringParameters") or {}).get("since")
+        base_select = f"""
+            SELECT m.id, m.text, m.image_url, m.created_at, u.id, u.display_name, u.avatar,
+                   m.reply_to_id, ru.display_name, rm.text, rm.image_url,
+                   d.id, d.file_name, d.file_size, d.file_type, d.cdn_url, d.expires_at
+            FROM {SCHEMA}.messages m
+            JOIN {SCHEMA}.users u ON u.id = m.user_id
+            LEFT JOIN {SCHEMA}.messages rm ON rm.id = m.reply_to_id
+            LEFT JOIN {SCHEMA}.users ru ON ru.id = rm.user_id
+            LEFT JOIN {SCHEMA}.chat_documents d ON d.message_id = m.id
+        """
         if since:
-            cur.execute(f"""
-                SELECT m.id, m.text, m.image_url, m.created_at, u.id, u.display_name, u.avatar,
-                       m.reply_to_id, ru.display_name, rm.text, rm.image_url
-                FROM {SCHEMA}.messages m
-                JOIN {SCHEMA}.users u ON u.id = m.user_id
-                LEFT JOIN {SCHEMA}.messages rm ON rm.id = m.reply_to_id
-                LEFT JOIN {SCHEMA}.users ru ON ru.id = rm.user_id
-                WHERE m.chat_id = %s AND m.id > %s
-                ORDER BY m.created_at ASC
-            """, (chat_id, int(since)))
+            cur.execute(base_select + "WHERE m.chat_id = %s AND m.id > %s ORDER BY m.created_at ASC",
+                        (chat_id, int(since)))
         else:
-            cur.execute(f"""
-                SELECT m.id, m.text, m.image_url, m.created_at, u.id, u.display_name, u.avatar,
-                       m.reply_to_id, ru.display_name, rm.text, rm.image_url
-                FROM {SCHEMA}.messages m
-                JOIN {SCHEMA}.users u ON u.id = m.user_id
-                LEFT JOIN {SCHEMA}.messages rm ON rm.id = m.reply_to_id
-                LEFT JOIN {SCHEMA}.users ru ON ru.id = rm.user_id
-                WHERE m.chat_id = %s
-                ORDER BY m.created_at ASC
-                LIMIT 100
-            """, (chat_id,))
+            cur.execute(base_select + "WHERE m.chat_id = %s ORDER BY m.created_at ASC LIMIT 100",
+                        (chat_id,))
 
         rows = cur.fetchall()
         conn.close()
@@ -226,6 +219,11 @@ def handler(event: dict, context) -> dict:
             "avatar": r[6] or "👤",
             "isMe": r[4] == caller_id,
             "replyTo": {"id": r[7], "authorName": r[8] or "?", "text": r[9] or "", "imageUrl": r[10]} if r[7] else None,
+            "document": {
+                "id": r[11], "fileName": r[12], "fileSize": r[13],
+                "fileType": r[14], "url": r[15],
+                "expiresAt": r[16].isoformat() if r[16] else None,
+            } if r[11] else None,
         } for r in rows]
         return {"statusCode": 200, "headers": cors(), "body": json.dumps({"messages": messages})}
 

@@ -36,31 +36,33 @@ export default function LoginScreen() {
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-md mx-auto overflow-hidden relative">
+    <div
+      className="flex h-screen items-center justify-center overflow-hidden relative"
+      style={{ background: "linear-gradient(160deg, hsl(35,60%,96%) 0%, hsl(22,40%,93%) 50%, hsl(340,40%,94%) 100%)" }}
+    >
+      {/* Декоративные пятна */}
       <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(160deg, hsl(35,60%,96%) 0%, hsl(22,40%,93%) 50%, hsl(340,40%,94%) 100%)",
-        }}
+        className="absolute top-0 right-0 w-96 h-96 rounded-full pointer-events-none opacity-30"
+        style={{ background: "radial-gradient(circle, hsl(22,85%,75%), transparent 65%)", transform: "translate(35%,-35%)" }}
       />
       <div
-        className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none opacity-30"
-        style={{
-          background: "radial-gradient(circle, hsl(22,85%,75%), transparent 65%)",
-          transform: "translate(35%,-35%)",
-        }}
-      />
-      <div
-        className="absolute bottom-0 left-0 w-64 h-64 rounded-full pointer-events-none opacity-20"
-        style={{
-          background: "radial-gradient(circle, hsl(340,60%,75%), transparent 65%)",
-          transform: "translate(-30%,30%)",
-        }}
+        className="absolute bottom-0 left-0 w-72 h-72 rounded-full pointer-events-none opacity-20"
+        style={{ background: "radial-gradient(circle, hsl(340,60%,75%), transparent 65%)", transform: "translate(-30%,30%)" }}
       />
 
-      <div className="relative flex flex-col h-full px-6 py-8 justify-between">
-        <div className="flex flex-col items-center pt-10 animate-slide-up">
+      {/* Карточка */}
+      <div
+        className="relative w-full flex flex-col gap-8 px-8 py-10 mx-4"
+        style={{
+          maxWidth: 420,
+          background: "rgba(255,255,255,0.75)",
+          backdropFilter: "blur(16px)",
+          borderRadius: 32,
+          boxShadow: "0 8px 48px rgba(0,0,0,0.10)",
+          border: "1px solid rgba(255,255,255,0.8)",
+        }}
+      >
+        <div className="flex flex-col items-center animate-slide-up">
           <div
             className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl mb-5"
             style={{
@@ -76,7 +78,7 @@ export default function LoginScreen() {
           <p className="text-muted-foreground text-center text-sm">Наш семейный мессенджер</p>
         </div>
 
-        <form onSubmit={handleLogin} className="flex flex-col gap-4 animate-slide-up stagger-2">
+        <form onSubmit={handleLogin} className="flex flex-col gap-4 animate-slide-up stagger-2 w-full">
           <div>
             <label className="text-sm text-muted-foreground mb-1.5 block" style={{ fontWeight: 600 }}>
               Логин
@@ -172,7 +174,7 @@ export default function LoginScreen() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-muted-foreground animate-fade-in pb-2">
+        <p className="text-center text-xs text-muted-foreground animate-fade-in">
           Нет аккаунта? Обратитесь к администратору семьи
         </p>
       </div>
