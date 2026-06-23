@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Icon from "@/shared/ui/icon";
 import { changePassword } from "@/shared/api";
+import ModalSheet from "@/shared/ui/ModalSheet";
 
 type Props = { onClose: () => void };
 
@@ -42,61 +43,52 @@ export default function ChangePasswordModal({ onClose }: Props) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(0,0,0,0.4)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="w-full max-w-md bg-white rounded-t-3xl animate-slide-up"
-        style={{ boxShadow: "0 -8px 40px rgba(0,0,0,0.15)" }}
-      >
-        <div className="flex items-center justify-between px-4 pt-5 pb-3 border-b border-border">
-          <p className="text-base text-foreground" style={{ fontWeight: 700 }}>Смена пароля</p>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-muted">
-            <Icon name="X" size={18} style={{ color: "hsl(25,15%,55%)" }} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-4 py-4 space-y-3">
-          <PasswordField label="Текущий пароль" value={oldPassword} onChange={setOldPassword} show={showOld} onToggle={() => setShowOld(!showOld)} />
-          <PasswordField label="Новый пароль" value={newPassword} onChange={setNewPassword} show={showNew} onToggle={() => setShowNew(!showNew)} />
-          <PasswordField label="Повторите новый пароль" value={confirmPassword} onChange={setConfirmPassword} show={showNew} onToggle={() => setShowNew(!showNew)} />
-
-          {error && (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-2xl" style={{ background: "hsl(0,70%,95%)" }}>
-              <Icon name="AlertCircle" size={15} style={{ color: "hsl(0,65%,55%)" }} />
-              <span className="text-sm" style={{ color: "hsl(0,65%,45%)", fontWeight: 600 }}>{error}</span>
-            </div>
-          )}
-          {success && (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-2xl" style={{ background: "hsl(140,50%,93%)" }}>
-              <Icon name="CheckCircle2" size={15} style={{ color: "hsl(140,50%,40%)" }} />
-              <span className="text-sm" style={{ color: "hsl(140,50%,35%)", fontWeight: 600 }}>Пароль успешно изменён!</span>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading || success}
-            className="w-full py-3.5 rounded-2xl text-white text-sm mt-1 transition-all active:scale-95"
-            style={{
-              background: loading || success ? "hsl(22,40%,75%)" : "linear-gradient(135deg, hsl(22,85%,62%), hsl(340,60%,68%))",
-              fontWeight: 700,
-              boxShadow: loading || success ? "none" : "0 6px 16px hsla(22,85%,62%,0.35)",
-            }}
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <Icon name="Loader2" size={16} className="animate-spin" style={{ color: "white" }} />
-                Сохраняем...
-              </span>
-            ) : "Сохранить пароль"}
-          </button>
-        </form>
-        <div className="h-4" />
+    <ModalSheet onClose={onClose}>
+      <div className="flex items-center justify-between px-4 pt-5 pb-3 border-b border-border">
+        <p className="text-base text-foreground" style={{ fontWeight: 700 }}>Смена пароля</p>
+        <button onClick={onClose} className="p-1.5 rounded-full hover:bg-muted">
+          <Icon name="X" size={18} style={{ color: "hsl(25,15%,55%)" }} />
+        </button>
       </div>
-    </div>
+
+      <form onSubmit={handleSubmit} className="px-4 py-4 space-y-3">
+        <PasswordField label="Текущий пароль" value={oldPassword} onChange={setOldPassword} show={showOld} onToggle={() => setShowOld(!showOld)} />
+        <PasswordField label="Новый пароль" value={newPassword} onChange={setNewPassword} show={showNew} onToggle={() => setShowNew(!showNew)} />
+        <PasswordField label="Повторите новый пароль" value={confirmPassword} onChange={setConfirmPassword} show={showNew} onToggle={() => setShowNew(!showNew)} />
+
+        {error && (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-2xl" style={{ background: "hsl(0,70%,95%)" }}>
+            <Icon name="AlertCircle" size={15} style={{ color: "hsl(0,65%,55%)" }} />
+            <span className="text-sm" style={{ color: "hsl(0,65%,45%)", fontWeight: 600 }}>{error}</span>
+          </div>
+        )}
+        {success && (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-2xl" style={{ background: "hsl(140,50%,93%)" }}>
+            <Icon name="CheckCircle2" size={15} style={{ color: "hsl(140,50%,40%)" }} />
+            <span className="text-sm" style={{ color: "hsl(140,50%,35%)", fontWeight: 600 }}>Пароль успешно изменён!</span>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading || success}
+          className="w-full py-3.5 rounded-2xl text-white text-sm mt-1 transition-all active:scale-95"
+          style={{
+            background: loading || success ? "hsl(22,40%,75%)" : "linear-gradient(135deg, hsl(22,85%,62%), hsl(340,60%,68%))",
+            fontWeight: 700,
+            boxShadow: loading || success ? "none" : "0 6px 16px hsla(22,85%,62%,0.35)",
+          }}
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <Icon name="Loader2" size={16} className="animate-spin" style={{ color: "white" }} />
+              Сохраняем...
+            </span>
+          ) : "Сохранить пароль"}
+        </button>
+      </form>
+      <div className="h-4" />
+    </ModalSheet>
   );
 }
 

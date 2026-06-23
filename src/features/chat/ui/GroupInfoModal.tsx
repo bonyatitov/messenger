@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Icon from "@/shared/ui/icon";
 import Avatar from "@/shared/ui/Avatar";
 import { getChatMembers, getChatUsers, addChatMember, removeChatMember, ChatMember, FamilyUser } from "@/shared/api";
+import ModalSheet from "@/shared/ui/ModalSheet";
 
 type Props = { chatId: number; chatName: string; onClose: () => void };
 
@@ -50,15 +51,8 @@ export default function GroupInfoModal({ chatId, chatName, onClose }: Props) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(0,0,0,0.4)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="w-full max-w-md bg-white rounded-t-3xl max-h-[80vh] flex flex-col animate-slide-up"
-        style={{ boxShadow: "0 -8px 40px rgba(0,0,0,0.15)" }}
-      >
+    <ModalSheet onClose={onClose}>
+      <div className="flex flex-col" style={{ maxHeight: "80vh" }}>
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border flex-shrink-0">
           <p className="text-base text-foreground" style={{ fontWeight: 700 }}>
             {showAdd ? "Добавить участника" : chatName}
@@ -152,6 +146,6 @@ export default function GroupInfoModal({ chatId, chatName, onClose }: Props) {
           </div>
         )}
       </div>
-    </div>
+    </ModalSheet>
   );
 }

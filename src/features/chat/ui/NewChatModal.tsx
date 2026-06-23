@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Icon from "@/shared/ui/icon";
 import Avatar from "@/shared/ui/Avatar";
 import { getChatUsers, createDirect, createGroupChat } from "@/shared/api";
+import ModalSheet from "@/shared/ui/ModalSheet";
 
 type Props = { onClose: () => void; onCreate: (chatId: number) => void };
 
@@ -32,15 +33,8 @@ export default function NewChatModal({ onClose, onCreate }: Props) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(0,0,0,0.4)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="w-full max-w-md bg-white rounded-t-3xl animate-slide-up max-h-[80vh] flex flex-col"
-        style={{ boxShadow: "0 -8px 40px rgba(0,0,0,0.15)" }}
-      >
+    <ModalSheet onClose={onClose}>
+      <div className="flex flex-col" style={{ maxHeight: "80vh" }}>
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border flex-shrink-0">
           <p className="text-base text-foreground" style={{ fontWeight: 700 }}>Новый чат</p>
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-muted">
@@ -113,6 +107,6 @@ export default function NewChatModal({ onClose, onCreate }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalSheet>
   );
 }

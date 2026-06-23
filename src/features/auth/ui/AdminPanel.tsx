@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Icon from "@/shared/ui/icon";
 import Avatar from "@/shared/ui/Avatar";
 import { User, listUsers, createUser, deleteUser, updateBadge, resetPasswordAdmin } from "@/shared/api";
+import ModalSheet from "@/shared/ui/ModalSheet";
 
 const BADGE_COLORS = [
   { label: "Синий",    bg: "hsl(210,90%,92%)", text: "hsl(210,90%,35%)" },
@@ -285,12 +286,8 @@ export default function AdminPanel({ onBack }: Props) {
 
       {/* Модалка редактирования бейджика */}
       {badgeModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setBadgeModal(null)}>
-          <div
-            className="w-full max-w-sm bg-white rounded-t-3xl px-5 pt-5 pb-8 animate-slide-up"
-            style={{ boxShadow: "0 -8px 32px rgba(0,0,0,0.12)" }}
-            onClick={e => e.stopPropagation()}
-          >
+        <ModalSheet onClose={() => setBadgeModal(null)} maxWidth={400}>
+          <div className="px-5 pt-5 pb-8">
             <div className="flex items-center justify-between mb-4">
               <p className="text-base text-foreground" style={{ fontWeight: 700 }}>
                 Бейджик — {badgeModal.user.displayName}
@@ -360,17 +357,13 @@ export default function AdminPanel({ onBack }: Props) {
               </button>
             </div>
           </div>
-        </div>
+        </ModalSheet>
       )}
 
       {/* Модалка смены пароля */}
       {resetPassModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setResetPassModal(null)}>
-          <div
-            className="w-full max-w-sm bg-white rounded-t-3xl px-5 pt-5 pb-8 animate-slide-up"
-            style={{ boxShadow: "0 -8px 32px rgba(0,0,0,0.12)" }}
-            onClick={e => e.stopPropagation()}
-          >
+        <ModalSheet onClose={() => setResetPassModal(null)} maxWidth={400}>
+          <div className="px-5 pt-5 pb-8">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-base text-foreground" style={{ fontWeight: 700 }}>Сменить пароль</p>
@@ -409,7 +402,7 @@ export default function AdminPanel({ onBack }: Props) {
               </button>
             </div>
           </div>
-        </div>
+        </ModalSheet>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Icon from "@/shared/ui/icon";
 import { getUserProfile } from "@/shared/api";
+import ModalSheet from "@/shared/ui/ModalSheet";
 
 export type ProfileUser = {
   id: number;
@@ -42,18 +43,9 @@ export default function UserProfileModal({ user: initialUser, onClose, onWriteMe
 
   return (
     <>
-      {/* Оверлей */}
-      <div
-        className="fixed inset-0 z-50 flex items-end justify-center"
-        style={{ background: "rgba(0,0,0,0.5)" }}
-        onClick={(e) => e.target === e.currentTarget && onClose()}
-      >
-        <div
-          className="w-full max-w-md bg-white rounded-t-3xl animate-slide-up overflow-hidden"
-          style={{ boxShadow: "0 -8px 40px rgba(0,0,0,0.18)" }}
-        >
-          {/* Шапка */}
-          <div className="flex items-center justify-between px-4 pt-5 pb-3">
+      <ModalSheet onClose={onClose}>
+        {/* Шапка */}
+        <div className="flex items-center justify-between px-4 pt-5 pb-3">
             <p className="text-base text-foreground" style={{ fontWeight: 700 }}>Профиль</p>
             <button onClick={onClose} className="p-1.5 rounded-full hover:bg-muted">
               <Icon name="X" size={18} style={{ color: "hsl(25,15%,55%)" }} />
@@ -171,8 +163,7 @@ export default function UserProfileModal({ user: initialUser, onClose, onWriteMe
           ) : (
             <div className="h-6" />
           )}
-        </div>
-      </div>
+      </ModalSheet>
 
       {/* Полноэкранный просмотр аватара */}
       {avatarExpanded && (
