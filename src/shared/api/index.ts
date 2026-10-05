@@ -1,5 +1,4 @@
-const AUTH_URL = "https://functions.poehali.dev/edf73421-b68d-45e4-b213-33d088c52f8c";
-const MSG_URL = "https://functions.poehali.dev/2d67e06c-c5a9-42e8-b7f8-8b7345619100";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
 
 export type Chat = {
   id: number;
@@ -60,19 +59,17 @@ function getToken() {
   return localStorage.getItem("fc_session") || "";
 }
 
-async function call(method: string, action: string, body?: object) {
-  const isGet = method === "GET";
-  const url = isGet ? `${AUTH_URL}?action=${action}` : AUTH_URL;
+async function apiFetch(path: string, method: string, body?: object) {
   const token = getToken();
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { "X-Session-Id": token } : {}),
       },
-      ...(isGet ? {} : { body: JSON.stringify({ action, ...body }) }),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
   } catch {
     throw new Error("Нет соединения с сервером. Проверьте интернет.");
@@ -80,36 +77,10 @@ async function call(method: string, action: string, body?: object) {
   const text = await res.text();
   let data: unknown;
   try {
-    const parsed = JSON.parse(text);
-    data = typeof parsed === "string" ? JSON.parse(parsed) : parsed;
-  } catch { data = {}; }
-  return { status: res.status, data: data as Record<string, unknown> };
-}
-
-async function msgCall(method: string, action: string, body?: object) {
-  const isGet = method === "GET";
-  const token = getToken();
-  const params = new URLSearchParams({ action, ...(isGet && body ? body as Record<string, string> : {}) });
-  const url = isGet ? `${MSG_URL}?${params}` : MSG_URL;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { "X-Session-Id": token } : {}),
-      },
-      ...(isGet ? {} : { body: JSON.stringify({ action, ...body }) }),
-    });
+    data = text ? JSON.parse(text) : {};
   } catch {
-    throw new Error("Нет соединения с сервером. Проверьте интернет.");
+    data = {};
   }
-  const text = await res.text();
-  let data: unknown;
-  try {
-    const parsed = JSON.parse(text);
-    data = typeof parsed === "string" ? JSON.parse(parsed) : parsed;
-  } catch { data = {}; }
   return { status: res.status, data: data as Record<string, unknown> };
 }
 
@@ -123,7 +94,7 @@ export class LoginLockedError extends Error {
 }
 
 export async function login(username: string, password: string) {
-  const { status, data } = await call("POST", "login", { username, password });
+  const { status, data } = await apiFetch("/auth/login", "POST", { username, password });
   if (status === 423 || data?.locked) throw new LoginLockedError((data?.error as string) || "Доступ заблокирован");
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка входа");
   localStorage.setItem("fc_session", data.token as string);
@@ -131,14 +102,14 @@ export async function login(username: string, password: string) {
 }
 
 export async function resetPasswordAdmin(userId: number, newPassword: string): Promise<void> {
-  const { status, data } = await call("POST", "reset_password_admin", { userId, newPassword });
+  const { status, data } = await apiFetch(`/auth/users/${userId}/reset-password`, "POST", { newPassword });
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка сброса пароля");
 }
 
 export async function getMe(): Promise<User | null> {
   const token = getToken();
   if (!token) return null;
-  const { status, data } = await call("GET", "me");
+  const { status, data } = await apiFetch("/auth/me", "GET");
   if (status !== 200) {
     localStorage.removeItem("fc_session");
     return null;
@@ -147,12 +118,12 @@ export async function getMe(): Promise<User | null> {
 }
 
 export async function logout() {
-  await call("POST", "logout");
+  await apiFetch("/auth/logout", "POST");
   localStorage.removeItem("fc_session");
 }
 
 export async function listUsers(): Promise<User[]> {
-  const { status, data } = await call("GET", "list_users");
+  const { status, data } = await apiFetch("/auth/users", "GET");
   if (status !== 200) throw new Error((data?.error as string) || "Нет доступа");
   return data.users as User[];
 }
@@ -167,78 +138,77 @@ export async function createUser(user: {
   age: number | null;
   bio: string;
 }) {
-  const { status, data } = await call("POST", "create_user", user);
+  const { status, data } = await apiFetch("/auth/users", "POST", user);
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка создания");
   return data;
 }
 
 export async function deleteUser(userId: number) {
-  const { status, data } = await call("POST", "delete_user", { userId });
+  const { status, data } = await apiFetch(`/auth/users/${userId}`, "DELETE");
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка удаления");
   return data;
 }
 
 export async function changePassword(oldPassword: string, newPassword: string) {
-  const { status, data } = await call("POST", "change_password", { oldPassword, newPassword });
+  const { status, data } = await apiFetch("/auth/me/password", "PATCH", { oldPassword, newPassword });
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка смены пароля");
   return data;
 }
 
 export async function updateProfile(payload: { displayName: string; age?: number | null }): Promise<{ displayName: string; age: number | null }> {
-  const { status, data } = await call("POST", "update_profile", payload);
+  const { status, data } = await apiFetch("/auth/me/profile", "PATCH", payload);
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка обновления профиля");
   return data as { displayName: string; age: number | null };
 }
 
 export async function updateAvatar(payload: { emoji?: string; imageBase64?: string; imageType?: string }): Promise<string> {
-  const { status, data } = await call("POST", "update_avatar", payload);
+  const { status, data } = await apiFetch("/auth/me/avatar", "PATCH", payload);
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка обновления аватара");
   return data.avatar as string;
 }
 
 export async function updateBadge(userId: number, badgeText: string, badgeColor: string): Promise<void> {
-  const { status, data } = await call("POST", "update_badge", { userId, badgeText, badgeColor });
+  const { status, data } = await apiFetch(`/auth/users/${userId}/badge`, "PATCH", { badgeText, badgeColor });
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка обновления бейджика");
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
 export async function listChats(): Promise<Chat[]> {
-  const { data } = await msgCall("GET", "list_chats");
+  const { data } = await apiFetch("/chats", "GET");
   return (data.chats as Chat[]) || [];
 }
 
 export async function getMessages(chatId: number, since?: number): Promise<Message[]> {
-  const body: Record<string, string> = { chatId: String(chatId) };
-  if (since) body.since = String(since);
-  const { data } = await msgCall("GET", "get_messages", body);
+  const qs = since ? `?since=${since}` : "";
+  const { data } = await apiFetch(`/chats/${chatId}/messages${qs}`, "GET");
   return (data.messages as Message[]) || [];
 }
 
 export async function sendMessage(chatId: number, text: string, replyToId?: number): Promise<Message> {
-  const { status, data } = await msgCall("POST", "send_message", { chatId, text, ...(replyToId ? { replyToId } : {}) });
+  const { status, data } = await apiFetch(`/chats/${chatId}/messages`, "POST", { text, ...(replyToId ? { replyToId } : {}) });
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка отправки");
   return data.message as Message;
 }
 
 export async function sendPhoto(chatId: number, imageBase64: string, imageType: string, caption?: string, replyToId?: number): Promise<Message> {
-  const { status, data } = await msgCall("POST", "send_photo", { chatId, imageBase64, imageType, caption, ...(replyToId ? { replyToId } : {}) });
+  const { status, data } = await apiFetch(`/chats/${chatId}/photos`, "POST", { imageBase64, imageType, caption, ...(replyToId ? { replyToId } : {}) });
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка отправки фото");
   return data.message as Message;
 }
 
 export async function createDirect(targetUserId: number): Promise<number> {
-  const { data } = await msgCall("POST", "create_direct", { targetUserId });
+  const { data } = await apiFetch("/chats/direct", "POST", { targetUserId });
   return data.chatId as number;
 }
 
 export async function deleteChat(chatId: number): Promise<void> {
-  const { status, data } = await msgCall("POST", "delete_chat", { chatId });
+  const { status, data } = await apiFetch(`/chats/${chatId}`, "DELETE");
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка удаления чата");
 }
 
 export async function createGroupChat(name: string, avatar: string, memberIds: number[]): Promise<number> {
-  const { data } = await msgCall("POST", "create_chat", { name, avatar, memberIds });
+  const { data } = await apiFetch("/chats/group", "POST", { name, avatar, memberIds });
   return data.chatId as number;
 }
 
@@ -256,25 +226,25 @@ export type FamilyUser = {
 };
 
 export async function getChatUsers(): Promise<{ isAdmin: boolean; users: FamilyUser[] }> {
-  const { data } = await msgCall("GET", "get_users");
+  const { data } = await apiFetch("/family", "GET");
   return { isAdmin: data.isAdmin as boolean, users: (data.users as FamilyUser[]) || [] };
 }
 
 export async function addFamilyMember(memberId: number): Promise<void> {
-  await msgCall("POST", "add_family", { memberId });
+  await apiFetch(`/family/${memberId}`, "POST");
 }
 
 export async function removeFamilyMember(memberId: number): Promise<void> {
-  await msgCall("POST", "remove_family", { memberId });
+  await apiFetch(`/family/${memberId}`, "DELETE");
 }
 
 export async function searchUsers(query: string): Promise<FamilyUser[]> {
-  const { data } = await msgCall("POST", "search_users", { query });
+  const { data } = await apiFetch(`/users/search?q=${encodeURIComponent(query)}`, "GET");
   return (data.users as FamilyUser[]) || [];
 }
 
 export async function getUserProfile(userId: number): Promise<FamilyUser | null> {
-  const { status, data } = await msgCall("GET", "get_user_profile", { userId: String(userId) });
+  const { status, data } = await apiFetch(`/users/${userId}`, "GET");
   if (status !== 200) return null;
   return data.user as FamilyUser;
 }
@@ -286,7 +256,7 @@ export async function sendDocument(
   fileType: string,
   fileSize: number,
 ): Promise<Message> {
-  const { status, data } = await msgCall("POST", "send_document", { chatId, fileBase64, fileName, fileType, fileSize });
+  const { status, data } = await apiFetch(`/chats/${chatId}/documents`, "POST", { fileBase64, fileName, fileType, fileSize });
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка отправки документа");
   return data.message as Message;
 }
@@ -300,16 +270,16 @@ export type ChatMember = {
 };
 
 export async function getChatMembers(chatId: number): Promise<{ members: ChatMember[]; creatorId: number; callerId: number }> {
-  const { data } = await msgCall("GET", "get_chat_members", { chatId: String(chatId) });
+  const { data } = await apiFetch(`/chats/${chatId}/members`, "GET");
   return { members: (data.members as ChatMember[]) || [], creatorId: data.creatorId as number, callerId: data.callerId as number };
 }
 
 export async function addChatMember(chatId: number, userId: number): Promise<void> {
-  const { status, data } = await msgCall("POST", "add_chat_member", { chatId, userId });
+  const { status, data } = await apiFetch(`/chats/${chatId}/members`, "POST", { userId });
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка добавления");
 }
 
 export async function removeChatMember(chatId: number, userId: number): Promise<void> {
-  const { status, data } = await msgCall("POST", "remove_chat_member", { chatId, userId });
+  const { status, data } = await apiFetch(`/chats/${chatId}/members/${userId}`, "DELETE");
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка удаления");
 }

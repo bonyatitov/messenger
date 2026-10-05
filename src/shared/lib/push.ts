@@ -1,4 +1,4 @@
-const PUSH_URL = "https://functions.poehali.dev/15654fa0-379e-402f-8cf3-dae50bb13ee5";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
 
 function getToken() {
   return localStorage.getItem("fc_session") || "";
@@ -11,27 +11,26 @@ function urlBase64ToUint8Array(base64String: string) {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
-async function pushCall(action: string, body?: object) {
+async function pushFetch(path: string, method: string, body?: object) {
   const token = getToken();
-  const res = await fetch(PUSH_URL, {
-    method: "POST",
+  const res = await fetch(`${API_BASE_URL}/push${path}`, {
+    method,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { "X-Session-Id": token } : {}),
     },
-    body: JSON.stringify({ action, ...body }),
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   const text = await res.text();
   try {
-    const parsed = JSON.parse(text);
-    return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+    return text ? JSON.parse(text) : {};
   } catch {
     return {};
   }
 }
 
 export async function getVapidPublicKey(): Promise<string> {
-  const data = await pushCall("get_vapid_public_key");
+  const data = await pushFetch("/vapid-key", "GET");
   return data.publicKey || "";
 }
 
@@ -53,7 +52,7 @@ export async function subscribeToPush(): Promise<boolean> {
   const json = subscription.toJSON();
   const keys = json.keys as { p256dh: string; auth: string };
 
-  await pushCall("subscribe", {
+  await pushFetch("/subscriptions", "POST", {
     endpoint: subscription.endpoint,
     p256dh: keys.p256dh,
     auth: keys.auth,
@@ -68,7 +67,7 @@ export async function unsubscribeFromPush(): Promise<void> {
     const reg = await navigator.serviceWorker.ready;
     const subscription = await reg.pushManager.getSubscription();
     if (!subscription) return;
-    await pushCall("unsubscribe", { endpoint: subscription.endpoint });
+    await pushFetch("/subscriptions", "DELETE", { endpoint: subscription.endpoint });
     await subscription.unsubscribe();
   } catch {
     // silent
@@ -77,7 +76,14 @@ export async function unsubscribeFromPush(): Promise<void> {
 
 export async function sendPushNotification(chatId: number, title: string, message: string) {
   try {
-    await pushCall("send_push", { chatId, title, message });
+    await fetch(`${API_BASE_URL}/chats/${chatId}/notify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(getToken() ? { "X-Session-Id": getToken() } : {}),
+      },
+      body: JSON.stringify({ title, message }),
+    });
   } catch {
     // silent — уведомления не критичны
   }

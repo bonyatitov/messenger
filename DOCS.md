@@ -13,10 +13,11 @@
 | UI-компоненты | shadcn/ui (Radix UI) — `src/components/ui/` |
 | Иконки | lucide-react через `<Icon name="..." />` |
 | Роутинг | React Router v6 |
-| Бэкенд | Python 3.11, Cloud Functions (serverless) |
-| База данных | PostgreSQL (psycopg2, Simple Query Protocol) |
-| Хранилище файлов | S3-совместимое (bucket.poehali.dev), CDN |
-| Аутентификация | Сессионные токены в localStorage (`fc_session`) |
+| Бэкенд | Node.js + Express + TypeScript (`server/`) |
+| База данных | PostgreSQL (пакет `pg`) |
+| Хранилище файлов | Локальный диск (`server/uploads`, отдаётся через `express.static`) — интерфейс `StorageProvider` позволяет позже подключить S3 без изменения роутов |
+| Push-уведомления | Web Push (`web-push`, VAPID) |
+| Аутентификация | Сессионные токены в localStorage (`fc_session`), заголовок `X-Session-Id` |
 
 ---
 
@@ -89,12 +90,24 @@ src/
 └── components/                      # shadcn/ui примитивы — НЕ редактировать вручную
     └── ui/                          # Button, Input, Dialog, Sheet, Toast и др.
 
-backend/
-├── auth/index.py                    # Авторизация, профиль, управление пользователями
-├── messages/index.py                # Чаты, сообщения, документы, семья
-└── push-notifications/index.py     # Web Push уведомления
-
-db_migrations/                      # SQL-миграции (только вперёд, без откатов)
+server/                              # Express-бэкенд (TypeScript, отдельный npm-пакет)
+├── migrations/                      # SQL-миграции (только вперёд, без откатов)
+│   └── 0001_init.sql
+├── uploads/                         # локальное хранилище файлов (gitignored)
+└── src/
+    ├── index.ts                     # создание app, express.listen
+    ├── env.ts                       # чтение переменных окружения
+    ├── db.ts                        # pg.Pool
+    ├── migrate.ts                   # раннер миграций (npm run migrate)
+    ├── lib/
+    │   ├── password.ts              # хэширование/проверка пароля
+    │   ├── time.ts                  # форматирование дат (МСК, "онлайн N назад")
+    │   └── storage.ts               # StorageProvider (сейчас — локальный диск)
+    ├── middleware/auth.ts           # requireAuth / requireAdmin
+    └── routes/
+        ├── auth.ts                  # /api/auth/*
+        ├── chats.ts                 # /api/chats/*, /api/family/*, /api/users/*
+        └── push.ts                  # /api/push/*
 ```
 
 ---
@@ -159,43 +172,31 @@ import MyScreen from "@/features/my-feature/ui/MyScreen";
 
 ## Добавить новый API-метод
 
-### Шаг 1 — Бэкенд: `backend/messages/index.py`
+### Шаг 1 — Бэкенд: `server/src/routes/chats.ts` (или `auth.ts` / `push.ts`)
 
-Добавь новый блок **перед** финальным `return 404`:
-
-```python
-# my_action — описание
-if action == "my_action":
-    # GET: параметры из queryStringParameters
-    param = (event.get("queryStringParameters") or {}).get("param", "")
-    # POST: параметры из body
-    param = body.get("param", "")
-
-    cur.execute(f"SELECT id FROM {SCHEMA}.users WHERE id = %s", (caller_id,))
-    row = cur.fetchone()
-    conn.close()
-    return {"statusCode": 200, "headers": _CORS, "body": json.dumps({"id": row[0]})}
+```ts
+chatsRouter.get("/my-data/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const result = await query<{ id: number }>("SELECT id FROM users WHERE id = $1", [id]);
+  res.json({ id: result.rows[0]?.id });
+});
 ```
 
-**Обязательно:** `conn.close()` перед каждым `return`, `_CORS` в заголовках, `%s` для SQL-параметров.
+Роутер уже навешан на `requireAuth` (см. `chatsRouter.use(requireAuth)`), поэтому `req.user` доступен во всех хендлерах. Для admin-только роутов добавляй `requireAdmin` после `requireAuth`. Async-ошибки сами долетают до общего error-handler в `index.ts` (патч от `express-async-errors`) — try/catch не нужен для обычных исключений.
 
 ### Шаг 2 — Фронтенд: `src/shared/api/index.ts`
 
 ```ts
-// GET
 export async function getMyData(id: number): Promise<MyType> {
-  const { data } = await msgCall("GET", "my_action", { id: String(id) });
-  return data.result as MyType;
+  const { data } = await apiFetch(`/chats/my-data/${id}`, "GET");
+  return data as MyType;
 }
 
-// POST
 export async function saveMyData(payload: { name: string }): Promise<void> {
-  const { status, data } = await msgCall("POST", "my_action", payload);
+  const { status, data } = await apiFetch("/chats/my-data", "POST", payload);
   if (status !== 200) throw new Error((data?.error as string) || "Ошибка");
 }
 ```
-
-Для `auth/index.py` — используй `call(...)` вместо `msgCall(...)`.
 
 ---
 
@@ -257,15 +258,14 @@ export default function MyModal({ onClose }: { onClose: () => void }) {
 
 ## Изменить базу данных
 
-Только через миграции в `db_migrations/`:
+Только через миграции в `server/migrations/` (простой раннер, без ORM):
 
 ```sql
--- db_migrations/V7__add_my_column.sql
-ALTER TABLE t_p3482084_react_native_family_.users
-ADD COLUMN IF NOT EXISTS my_field TEXT;
+-- server/migrations/0002_add_my_column.sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS my_field TEXT;
 ```
 
-Схема БД: `t_p3482084_react_native_family_` (константа `SCHEMA` в бэкенде).
+Таблицы не квалифицируются именем схемы — она задаётся один раз через `DB_SCHEMA` в `.env` (по умолчанию `public`) и применяется через `search_path`. Применить миграции: `npm run server:migrate` из корня (или `npm run migrate` из `server/`).
 
 | Таблица | Содержимое |
 |---|---|
@@ -296,96 +296,84 @@ const { user, logout, setUser } = useAuth();
 
 ### Бэкенд
 
-```python
-session_token = (event.get("headers") or {}).get("x-session-id", "")
-caller = get_user_by_session(cur, session_token)
-if not caller:
-    conn.close()
-    return {"statusCode": 401, "headers": _CORS, "body": json.dumps({"error": "Не авторизован"})}
+```ts
+import { requireAuth, requireAdmin } from "../middleware/auth.js";
 
-caller_id    = caller[0]   # int
-display_name = caller[2]   # str
-role         = caller[3]   # "admin" | "member"
-avatar       = caller[4]   # str
+router.get("/something", requireAuth, async (req, res) => {
+  const caller = req.user!; // { id, username, displayName, role, avatar, bio, city, age, badgeText, badgeColor }
+  res.json({ ok: true });
+});
 
-# Проверка прав admin:
-if role != "admin":
-    conn.close()
-    return {"statusCode": 403, "headers": _CORS, "body": json.dumps({"error": "Нет доступа"})}
+router.post("/admin-only", requireAuth, requireAdmin, async (req, res) => {
+  // req.user.role === "admin" гарантирован requireAdmin
+});
 ```
 
 ---
 
-## Загрузка файлов в S3
+## Загрузка файлов
 
-```python
-import boto3, os, base64, secrets
+```ts
+import { storage, extFromContentType } from "../lib/storage.js";
 
-file_data = base64.b64decode(body.get("fileBase64"))
-s3 = boto3.client(
-    "s3",
-    endpoint_url="https://bucket.poehali.dev",
-    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-)
-key = f"folder/{secrets.token_hex(8)}.jpg"
-s3.put_object(Bucket="files", Key=key, Body=file_data, ContentType="image/jpeg")
-cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
+const buffer = Buffer.from(req.body.fileBase64, "base64");
+const { key, url } = await storage.save(buffer, "my-folder", extFromContentType(req.body.fileType), req.body.fileType);
+// url — абсолютный адрес вида `${PUBLIC_BASE_URL}/uploads/my-folder/<hash>.<ext>`
+// key — относительный путь, нужен для storage.delete(key)
 ```
 
-- Bucket всегда `"files"`, endpoint всегда `https://bucket.poehali.dev`
-- CDN-путь строится через `AWS_ACCESS_KEY_ID`
+Сейчас `storage` — `LocalStorageProvider` (пишет в `server/uploads/`, отдаёт через `express.static`). Когда появится внешнее хранилище — реализовать `S3StorageProvider` с тем же интерфейсом `StorageProvider` (`server/src/lib/storage.ts`) и подменить экспортируемый `storage`; роуты (`auth.ts`, `chats.ts`) не меняются.
 
 ---
 
-## Справочник бэкенд-экшенов
+## Справочник REST-роутов
 
-### `auth`
+### `/api/auth`
 
-| Экшен | Метод | Доступ | Описание |
+| Роут | Метод | Доступ | Описание |
 |---|---|---|---|
-| `login` | POST | Все | Вход по username + password |
-| `logout` | POST | Авториз. | Завершение сессии |
-| `me` | GET | Авториз. | Данные текущего пользователя |
-| `create_user` | POST | admin | Создание пользователя |
-| `list_users` | GET | admin | Список всех пользователей |
-| `delete_user` | POST | admin | Удаление пользователя |
-| `change_password` | POST | Авториз. | Смена своего пароля |
-| `update_profile` | POST | Авториз. | Изменение имени и возраста |
-| `update_avatar` | POST | Авториз. | Смена аватара (emoji или фото) |
-| `update_badge` | POST | admin | Установка бейджа пользователю |
-| `reset_password_admin` | POST | admin | Сброс пароля любому пользователю |
+| `/login` | POST | Все | Вход по username + password |
+| `/logout` | POST | Авториз. | Завершение сессии |
+| `/me` | GET | Авториз. | Данные текущего пользователя |
+| `/users` | GET | admin | Список всех пользователей |
+| `/users` | POST | admin | Создание пользователя |
+| `/users/:id` | DELETE | admin | Удаление пользователя |
+| `/users/:id/reset-password` | POST | admin | Сброс пароля любому пользователю |
+| `/users/:id/badge` | PATCH | admin | Установка бейджа пользователю |
+| `/me/password` | PATCH | Авториз. | Смена своего пароля |
+| `/me/avatar` | PATCH | Авториз. | Смена аватара (emoji или фото) |
+| `/me/profile` | PATCH | Авториз. | Изменение имени и возраста |
 
-### `messages`
+### `/api/chats`, `/api/family`, `/api/users` (все — авторизованные)
 
-| Экшен | Метод | Описание |
+| Роут | Метод | Описание |
 |---|---|---|
-| `list_chats` | GET | Список чатов с последним сообщением |
-| `get_messages` | GET | Сообщения чата (с документами) |
-| `send_message` | POST | Отправить текстовое сообщение |
-| `send_photo` | POST | Отправить фото (base64) |
-| `send_document` | POST | Отправить документ PDF/Word/Excel (удаляется через 24ч) |
-| `get_documents` | GET | Активные документы чата |
-| `create_direct` | POST | Создать личный чат |
-| `create_chat` | POST | Создать групповой чат |
-| `delete_chat` | POST | Удалить чат |
-| `get_users` | GET | Участники семьи |
-| `get_user_profile` | GET | Полный профиль пользователя |
-| `search_users` | POST | Поиск по имени / @username |
-| `add_family` | POST | Добавить в семью |
-| `remove_family` | POST | Убрать из семьи |
-| `get_chat_members` | GET | Участники группового чата |
-| `add_chat_member` | POST | Добавить участника |
-| `remove_chat_member` | POST | Удалить участника |
+| `/chats` | GET | Список чатов с последним сообщением |
+| `/chats/direct` | POST | Создать личный чат |
+| `/chats/group` | POST | Создать групповой чат |
+| `/chats/:chatId` | DELETE | Удалить чат |
+| `/chats/:chatId/messages` | GET | Сообщения чата (`?since=` для поллинга), с документами |
+| `/chats/:chatId/messages` | POST | Отправить текстовое сообщение |
+| `/chats/:chatId/photos` | POST | Отправить фото (base64) |
+| `/chats/:chatId/documents` | POST | Отправить документ (удаляется через 24ч) |
+| `/chats/:chatId/documents` | GET | Активные документы чата |
+| `/chats/:chatId/members` | GET | Участники группового чата |
+| `/chats/:chatId/members` | POST | Добавить участника |
+| `/chats/:chatId/members/:userId` | DELETE | Удалить участника |
+| `/chats/:chatId/notify` | POST | Отправить push участникам чата |
+| `/family` | GET | Участники семьи |
+| `/family/:userId` | POST | Добавить в семью |
+| `/family/:userId` | DELETE | Убрать из семьи |
+| `/users/search?q=` | GET | Поиск по имени / @username |
+| `/users/:userId` | GET | Полный профиль пользователя |
 
-### `push-notifications`
+### `/api/push`
 
-| Экшен | Метод | Описание |
-|---|---|---|
-| `get_vapid_public_key` | GET | VAPID-ключ для Web Push |
-| `subscribe` | POST | Подписаться на уведомления |
-| `unsubscribe` | POST | Отписаться |
-| `send_push` | POST | Отправить уведомление участникам чата |
+| Роут | Метод | Доступ | Описание |
+|---|---|---|---|
+| `/vapid-key` | GET | Все | VAPID-ключ для Web Push |
+| `/subscriptions` | POST | Авториз. | Подписаться на уведомления |
+| `/subscriptions` | DELETE | Авториз. | Отписаться |
 
 ---
 
@@ -428,22 +416,46 @@ type FamilyUser = {
 
 ---
 
-## Секреты (только для бэкенда)
+## Переменные окружения
+
+Бэкенд (`server/.env`, см. `server/.env.example`):
 
 | Переменная | Назначение |
 |---|---|
 | `DATABASE_URL` | Строка подключения к PostgreSQL |
-| `AWS_ACCESS_KEY_ID` | Ключ S3-хранилища и часть CDN-пути |
-| `AWS_SECRET_ACCESS_KEY` | Секрет S3-хранилища |
+| `DB_SCHEMA` | Схема БД (по умолчанию `public`) |
+| `PORT` | Порт Express (по умолчанию 3001) |
+| `PUBLIC_BASE_URL` | Публичный адрес бэкенда — используется для построения ссылок на загруженные файлы |
+| `FRONTEND_ORIGIN` | Origin фронтенда для CORS |
+| `UPLOAD_DIR` | Папка для локального хранилища файлов |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Ключи для Web Push (генерируются через `npx web-push generate-vapid-keys`) |
+
+Фронтенд (корневой `.env`, см. `.env.example`): `VITE_API_BASE_URL` (в dev не нужен — Vite проксирует `/api` на `localhost:3001`).
 
 ---
 
-## Деплой
+## Локальный запуск
 
-**Фронтенд** — билд автоматически при сохранении. Домен: **Опубликовать → Привязать свой домен**.
+```bash
+# 1. Поднять Postgres (или укажи свой DATABASE_URL)
+docker compose up -d
 
-**Бэкенд** — после изменений в `backend/` вызвать `sync_backend`. Деплоятся только изменённые функции.
+# 2. Бэкенд
+cd server
+cp .env.example .env   # заполнить DATABASE_URL/VAPID-ключи при необходимости
+npm install
+npm run migrate        # создаёт таблицы + сидового admin/admin123
+npm run dev             # http://localhost:3001
 
-**Миграции БД** — создать `db_migrations/V{N}__name.sql`, вызвать `migrate_db`, проверить `get_db_info`.
+# 3. Фронтенд (в отдельном терминале, из корня)
+npm install
+npm run dev             # http://localhost:5173, /api проксируется на бэкенд
+```
 
-**Скачать код** — **Скачать → Скачать код** (исходники) или **Скачать билд** (HTML+JS+CSS).
+Либо из корня одной командой: `npm run dev:all` (поднимает и фронт, и бэк через `concurrently`; Postgres и `npm run server:migrate` нужно подготовить заранее).
+
+## Деплой в прод
+
+- Собрать фронтенд: `npm run build` → статика в `dist/`, раздать через любой веб-сервер/CDN.
+- Собрать бэкенд: `npm run server:build` (или `cd server && npm run build`) → `server/dist/`, запускать `node dist/index.js` (понадобится свой процесс-менеджер — pm2/systemd/Docker — и реальный `DATABASE_URL`/VAPID-ключи/`PUBLIC_BASE_URL`).
+- Применить миграции на проде: `DATABASE_URL=... npm run migrate` из `server/`.

@@ -1,1 +1,0 @@
-ALTER TABLE t_p3482084_react_native_family_.users ADD COLUMN last_seen TIMESTAMP WITHOUT TIME ZONE;
